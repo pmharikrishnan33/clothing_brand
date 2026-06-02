@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from app.core.client_manager import get_client_config
@@ -5,6 +7,7 @@ from app.core.config import VERIFY_TOKEN
 from app.services.message_service import message_service
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 #----------GET REQUEST-----------
 
@@ -29,6 +32,7 @@ async def webhook(request: Request):
         messages = value.get("messages", [])
 
         if not messages:
+            logger.info("Webhook ignored: no messages in payload")
             return {"status": "ignored"}
 
         msg = messages[0]
@@ -46,11 +50,12 @@ async def webhook(request: Request):
         # Fetch the specific client configuration from DB
         client = get_client_config(phone_id)
         if not client:
+            logger.error("Client not found for phone_number_id=%s", phone_id)
             return {"status": "client_not_found"}
 
-        await message_service(client, from_phone, text_data, phone_id)
+        result = await message_service(client, from_phone, text_data, phone_id)
         
-        return {"status": "success"}
+        return result
     except Exception as e:
-        print(f"🚨 WEBHOOK ERROR: {e}")
+        logger.exception("Webhook error")
         return {"status": "error"}

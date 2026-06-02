@@ -244,7 +244,14 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             "reason": "missing_whatsapp_token",
         }
 
-    send_whatsapp_message(phone_id, access_token, from_phone, reply)
+    send_result = send_whatsapp_message(phone_id, access_token, from_phone, reply)
+    if send_result.get("status") == "error":
+        return {
+            "status": "error",
+            "tenant_id": tenant_id,
+            "reason": "whatsapp_send_failed",
+            "detail": send_result.get("detail"),
+        }
 
     save_message_record(
         tenant_id=tenant_id,
@@ -252,11 +259,12 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
         customer_phone=from_phone,
         direction="outbound",
         body=reply,
-        raw_payload={"source": "message_service"},
+        raw_payload={"source": "message_service", "send_result": send_result},
     )
 
     return {
         "status": "success",
         "tenant_id": tenant_id,
         "reply": reply,
+        "send_result": send_result,
     }
