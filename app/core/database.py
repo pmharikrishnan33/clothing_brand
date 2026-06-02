@@ -16,5 +16,5 @@ def get_mongo_client() -> MongoClient:
 
 def get_db():
     client = get_mongo_client()
-    db_name = os.getenv("MONGO_DB_NAME", "zyphor_backend")
+    db_name = os.getenv("MONGO_DB_NAME", "zyphor_technologies")
     return client[db_name]

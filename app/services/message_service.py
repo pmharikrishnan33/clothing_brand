@@ -1,12 +1,10 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-from app.core.config import WHATSAPP_TOKEN
 from app.core.database import get_db
 from app.services.ai_service import (
     ai_extract_info_openai,
@@ -237,9 +235,16 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
         else:
             reply = "Thanks for your message. We will get back to you shortly."
 
-    access_token = client.get("whatsapp_token") or WHATSAPP_TOKEN or os.getenv("WHATSAPP_TOKEN", "")
-    if access_token:
-        send_whatsapp_message(phone_id, access_token, from_phone, reply)
+    access_token = client.get("whatsapp_token", "")
+    if not access_token:
+        logger.error("Missing WhatsApp token for tenant_id=%s phone_id=%s", tenant_id, phone_id)
+        return {
+            "status": "error",
+            "tenant_id": tenant_id,
+            "reason": "missing_whatsapp_token",
+        }
+
+    send_whatsapp_message(phone_id, access_token, from_phone, reply)
 
     save_message_record(
         tenant_id=tenant_id,
