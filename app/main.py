@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query, Request
-
+from fastapi.responses import PlainTextResponse
 from app.core.client_manager import get_client_config
 from app.core.config import VERIFY_TOKEN
 from app.services.message_service import message_service
