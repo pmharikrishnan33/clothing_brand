@@ -13,7 +13,7 @@ def verify(hub_mode: str = Query(None, alias="hub.mode"),
            hub_token: str = Query(None, alias="hub.verify_token"), 
            hub_challenge: str = Query(None, alias="hub.challenge")):
     if hub_mode == "subscribe" and hub_token == VERIFY_TOKEN:
-        return hub_challenge
+        return PlainTextResponse(content=hub_challenge)
     raise HTTPException(status_code=403)
 
 #----------POST REQUEST-----------
