@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
-from app.services.priceservice import record_meta_conversation_usage
 
 from app.core.database import get_db
 from app.services.ai_service import (
