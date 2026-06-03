@@ -106,9 +106,13 @@ def record_ai_model_usage(
     pricing = _model_pricing(client_config, model)
     identity = _client_identity(client_config, channel_id)
     currency = _currency(client_config)
+    
+    # Extract exact tokens dynamically
     prompt_tokens = int(token_usage.get("prompt_tokens", 0) or 0)
     completion_tokens = int(token_usage.get("completion_tokens", 0) or 0)
     total_tokens = int(token_usage.get("total_tokens", 0) or prompt_tokens + completion_tokens)
+    
+    # Calculate exact dynamic cost based on tokens for this specific response
     input_cost = (prompt_tokens / 1_000_000) * pricing["input_per_million"]
     output_cost = (completion_tokens / 1_000_000) * pricing["output_per_million"]
     total_cost = round(input_cost + output_cost, 8)
@@ -235,7 +239,7 @@ def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end_at: O
             ]
         )
     )
-    meta_by_category = list(
+    meta_by_category_raw = list(
         db.meta_conversation_usage.aggregate(
             [
                 {"$match": meta_match},
@@ -243,121 +247,74 @@ def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end_at: O
                     "$group": {
                         "_id": {"category": "$category", "currency": {"$ifNull": ["$currency", DEFAULT_CURRENCY]}},
                         "conversations": {"$sum": 1},
-                        "total_cost": {"$sum": {"$ifNull": ["$price", "$price_usd"]}},
-                    }
-                },
-                {"$sort": {"total_cost": -1}},
-            ]
-        )
-    )
-    ai_by_phone_number = list(
-        db.ai_model_usage.aggregate(
-            [
-                {"$match": ai_match},
-                {
-                    "$group": {
-                        "_id": {"phone_number_id": {"$ifNull": ["$phone_number_id", "$channel_id"]}, "currency": {"$ifNull": ["$currency", DEFAULT_CURRENCY]}},
-                        "ai_requests": {"$sum": 1},
-                        "ai_tokens": {"$sum": "$total_tokens"},
-                        "ai_cost": {"$sum": {"$ifNull": ["$total_cost", "$total_cost_usd"]}},
+                        "total_cost_raw": {"$sum": {"$ifNull": ["$price", "$price_usd"]}},
                     }
                 },
             ]
         )
     )
-    meta_by_phone_number = list(
-        db.meta_conversation_usage.aggregate(
-            [
-                {"$match": meta_match},
-                {
-                    "$group": {
-                        "_id": {"phone_number_id": {"$ifNull": ["$phone_number_id", "$channel_id"]}, "currency": {"$ifNull": ["$currency", DEFAULT_CURRENCY]}},
-                        "meta_conversations": {"$sum": 1},
-                        "meta_cost": {"$sum": {"$ifNull": ["$price", "$price_usd"]}},
-                    }
-                },
-            ]
-        )
-    )
-
+    
     currency = DEFAULT_CURRENCY
-    phone_number_totals: Dict[str, Dict[str, Any]] = {}
-    for item in ai_by_phone_number:
-        phone_number_id = str(item.get("_id", {}).get("phone_number_id") or "unknown")
-        currency = item.get("_id", {}).get("currency") or currency
-        phone_number_totals[phone_number_id] = {
-            "phone_number_id": phone_number_id,
-            "currency": currency,
-            "ai_requests": item.get("ai_requests", 0),
-            "ai_tokens": item.get("ai_tokens", 0),
-            "ai_cost": item.get("ai_cost", 0),
-            "meta_conversations": 0,
-            "meta_cost": 0,
-        }
-    for item in meta_by_phone_number:
-        phone_number_id = str(item.get("_id", {}).get("phone_number_id") or "unknown")
-        currency = item.get("_id", {}).get("currency") or currency
-        current = phone_number_totals.setdefault(
-            phone_number_id,
-            {
-                "phone_number_id": phone_number_id,
-                "currency": currency,
-                "ai_requests": 0,
-                "ai_tokens": 0,
-                "ai_cost": 0,
-                "meta_conversations": 0,
-                "meta_cost": 0,
-            },
-        )
-        current["meta_conversations"] = item.get("meta_conversations", 0)
-        current["meta_cost"] = item.get("meta_cost", 0)
 
-    ai_total = round(sum(item.get("total_cost", 0) for item in ai_by_model), 8)
-    meta_total = round(sum(item.get("total_cost", 0) for item in meta_by_category), 8)
+    # --- META CONVERSATION LOGIC (First 1000 Free) ---
+    meta_categories_processed = []
+    meta_total_cost = 0.0
+
+    for item in meta_by_category_raw:
+        category = item["_id"].get("category")
+        curr = item["_id"].get("currency")
+        conversations = item.get("conversations", 0)
+        raw_cost = item.get("total_cost_raw", 0)
+        
+        # Calculate unit price
+        unit_price = raw_cost / conversations if conversations > 0 else 0
+        
+        # Meta allows 1000 free "service" (user-initiated) conversations
+        free_allowance = 1000 if category == "service" else 0
+        free_conversations_used = min(conversations, free_allowance)
+        billable_conversations = max(0, conversations - free_allowance)
+        
+        # Only charge for conversations AFTER the first 1000
+        adjusted_cost = billable_conversations * unit_price
+        meta_total_cost += adjusted_cost
+        
+        meta_categories_processed.append({
+            "category": category,
+            "currency": curr,
+            "total_conversations": conversations,
+            "free_conversations": free_conversations_used,
+            "billable_conversations": billable_conversations,
+            "dynamic_total_cost": round(adjusted_cost, 8)
+        })
+
+    # --- AI MODEL LOGIC (Dynamic Tokens) ---
+    ai_total_cost = 0.0
+    ai_models_processed = []
+    
+    for item in ai_by_model:
+        cost = item.get("total_cost", 0)
+        ai_total_cost += cost
+        ai_models_processed.append({
+            "provider": item["_id"].get("provider"),
+            "model": item["_id"].get("model"),
+            "currency": item["_id"].get("currency"),
+            "total_requests": item.get("requests", 0),
+            "dynamic_prompt_tokens": item.get("prompt_tokens", 0),
+            "dynamic_completion_tokens": item.get("completion_tokens", 0),
+            "total_tokens": item.get("total_tokens", 0),
+            "dynamic_total_cost": round(cost, 8),
+        })
 
     return {
         "tenant_id": tenant_id,
         "currency": currency,
         "ai_model_usage": {
-            "total_cost": ai_total,
-            "by_model": [
-                {
-                    "provider": item["_id"].get("provider"),
-                    "model": item["_id"].get("model"),
-                    "currency": item["_id"].get("currency"),
-                    "requests": item.get("requests", 0),
-                    "prompt_tokens": item.get("prompt_tokens", 0),
-                    "completion_tokens": item.get("completion_tokens", 0),
-                    "total_tokens": item.get("total_tokens", 0),
-                    "total_cost": round(item.get("total_cost", 0), 8),
-                }
-                for item in ai_by_model
-            ],
+            "total_cost": round(ai_total_cost, 8),
+            "by_model": ai_models_processed, # <--- This will automatically list all 3 models with dynamic tokens
         },
         "meta_conversations": {
-            "total_cost": meta_total,
-            "by_category": [
-                {
-                    "category": item["_id"].get("category"),
-                    "currency": item["_id"].get("currency"),
-                    "conversations": item.get("conversations", 0),
-                    "total_cost": round(item.get("total_cost", 0), 8),
-                }
-                for item in meta_by_category
-            ],
+            "total_cost": round(meta_total_cost, 8),
+            "by_category": meta_categories_processed, # <--- Only bills AFTER 1000 free
         },
-        "by_phone_number_id": [
-            {
-                "phone_number_id": item.get("phone_number_id"),
-                "currency": item.get("currency", currency),
-                "ai_requests": item.get("ai_requests", 0),
-                "ai_tokens": item.get("ai_tokens", 0),
-                "ai_cost": round(item.get("ai_cost", 0), 8),
-                "meta_conversations": item.get("meta_conversations", 0),
-                "meta_cost": round(item.get("meta_cost", 0), 8),
-                "total_cost": round(item.get("ai_cost", 0) + item.get("meta_cost", 0), 8),
-            }
-            for item in sorted(phone_number_totals.values(), key=lambda value: value["phone_number_id"])
-        ],
-        "total_cost": round(ai_total + meta_total, 8),
+        "total_combined_cost": round(ai_total_cost + meta_total_cost, 8),
     }
