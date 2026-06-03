@@ -102,44 +102,82 @@ def record_ai_model_usage(
     operation: str,
     token_usage: Dict[str, int],
     client_config: Optional[Dict[str, Any]] = None,
+    interaction_id: Optional[str] = None, # <--- NEW PARAMETER
 ) -> Dict[str, Any]:
     pricing = _model_pricing(client_config, model)
     identity = _client_identity(client_config, channel_id)
     currency = _currency(client_config)
     
-    # Extract exact tokens dynamically
     prompt_tokens = int(token_usage.get("prompt_tokens", 0) or 0)
     completion_tokens = int(token_usage.get("completion_tokens", 0) or 0)
     total_tokens = int(token_usage.get("total_tokens", 0) or prompt_tokens + completion_tokens)
     
-    # Calculate exact dynamic cost based on tokens for this specific response
     input_cost = (prompt_tokens / 1_000_000) * pricing["input_per_million"]
     output_cost = (completion_tokens / 1_000_000) * pricing["output_per_million"]
     total_cost = round(input_cost + output_cost, 8)
 
-    document = {
-        "tenant_id": tenant_id,
-        **identity,
-        "provider": provider,
-        "model": model,
-        "operation": operation,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens,
-        "input_price_per_million": pricing["input_per_million"],
-        "output_price_per_million": pricing["output_per_million"],
-        "total_cost": total_cost,
-        "currency": currency,
-        "pricing_snapshot": {
+    db = get_db()
+    now = _now()
+
+    if interaction_id:
+        # UPSERT: If it exists, add the new tokens/cost to the existing ones.
+        update_data = {
+            "$setOnInsert": {
+                "tenant_id": tenant_id,
+                "interaction_id": interaction_id,
+                **identity,
+                "provider": provider,
+                "model": model,
+                "input_price_per_million": pricing["input_per_million"],
+                "output_price_per_million": pricing["output_per_million"],
+                "currency": currency,
+                "pricing_snapshot": {
+                    "input_price_per_million": pricing["input_per_million"],
+                    "output_price_per_million": pricing["output_per_million"],
+                    "currency": currency,
+                },
+                "created_at": now,
+            },
+            "$inc": {  # <--- Automatically adds new tokens/cost to the current total
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "total_cost": total_cost,
+            },
+            "$addToSet": { # <--- Keeps a list of all operations done (e.g. ["extract_info", "generate_response"])
+                "operations": operation
+            }
+        }
+        db.ai_model_usage.update_one(
+            {"tenant_id": tenant_id, "interaction_id": interaction_id, "model": model}, 
+            update_data, 
+            upsert=True
+        )
+        return {"status": "updated", "interaction_id": interaction_id}
+    else:
+        # Fallback if no interaction_id is passed
+        document = {
+            "tenant_id": tenant_id,
+            **identity,
+            "provider": provider,
+            "model": model,
+            "operations": [operation],
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
             "input_price_per_million": pricing["input_per_million"],
             "output_price_per_million": pricing["output_per_million"],
+            "total_cost": total_cost,
             "currency": currency,
-        },
-        "created_at": _now(),
-    }
-
-    get_db().ai_model_usage.insert_one(document)
-    return document
+            "pricing_snapshot": {
+                "input_price_per_million": pricing["input_per_million"],
+                "output_price_per_million": pricing["output_per_million"],
+                "currency": currency,
+            },
+            "created_at": now,
+        }
+        get_db().ai_model_usage.insert_one(document)
+        return document
 
 
 def record_meta_conversation_usage(

@@ -35,6 +35,7 @@ def _record_usage(
     channel_id: Optional[str],
     operation: str,
     client_config: Optional[Dict[str, Any]] = None,
+    interaction_id: Optional[str] = None, # <--- Add this
 ) -> None:
     if not tenant_id or not channel_id:
         return
@@ -48,10 +49,10 @@ def _record_usage(
             operation=operation,
             token_usage=extract_token_usage(response),
             client_config=client_config,
+            interaction_id=interaction_id, # <--- Pass it here
         )
     except Exception:
         logger.exception("AI usage tracking failed for tenant_id=%s operation=%s", tenant_id, operation)
-
 
 def ai_extract_info_openai(
     message: str,
@@ -80,7 +81,7 @@ Message: {message}"""
             model=GEMINI_MODEL,
             contents=prompt,
         )
-        _record_usage(response, tenant_id, channel_id, "extract_info", client_config)
+        _record_usage(response, tenant_id, channel_id, "extract_info", client_config, interaction_id)
         raw_text = _strip_code_fences(_response_text(response))
         return json.loads(raw_text)
     except Exception as e:
@@ -118,7 +119,7 @@ Return only the plain response text. No code blocks, no JSON."""
             model=GEMINI_MODEL,
             contents=prompt,
         )
-        _record_usage(response, tenant_id, channel_id, "generate_response", client_config)
+        _record_usage(response, tenant_id, channel_id, "generate_response", client_config, interaction_id)
         return _response_text(response)
     except Exception as e:
         print(f"Gemini response generation error: {e}")
@@ -156,7 +157,7 @@ Return only the plain text response."""
             model=GEMINI_MODEL,
             contents=prompt,
         )
-        _record_usage(response, tenant_id, channel_id, "fallback_response", client_config)
+        _record_usage(response, tenant_id, channel_id, "fallback_response", client_config, interaction_id)
         return _response_text(response)
     except Exception as e:
         print(f"Gemini fallback error: {e}")
