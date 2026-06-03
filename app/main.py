@@ -12,12 +12,6 @@ from app.services.message_service import message_service
 app = FastAPI()
 logger = logging.getLogger(__name__)
 app.include_router(usage_router)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
-
-@app.get("/usage-dashboard")
-def usage_dashboard():
-    return FileResponse(Path("app/static/usage-dashboard.html"))
 
 #----------GET REQUEST-----------
 
