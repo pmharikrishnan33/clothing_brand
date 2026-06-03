@@ -59,6 +59,7 @@ def ai_extract_info_openai(
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
     client_config: Optional[Dict[str, Any]] = None,
+    interaction_id: Optional[str] = None,
 ) -> dict:
     if not client:
         return {
@@ -95,6 +96,7 @@ def generate_response_with_openai(
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
     client_config: Optional[Dict[str, Any]] = None,
+    interaction_id: Optional[str] = None,
 ) -> str:
     if not client:
         return "I understood your request. A team member will follow up shortly."
@@ -138,6 +140,7 @@ def ai_fallback_response_openai(
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
     client_config: Optional[Dict[str, Any]] = None,
+    interaction_id: Optional[str] = None,
 ) -> str:
     if not client:
         return "I'm not sure how to help with that. Could you rephrase or ask about our services?"
