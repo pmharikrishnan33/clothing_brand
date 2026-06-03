@@ -8,7 +8,7 @@ from app.services.pricing_service import extract_token_usage, record_ai_model_us
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Using gemini-2.5-flash as the lightweight, fast default model
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 # Initialize the official Google GenAI client
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
