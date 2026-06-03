@@ -107,6 +107,13 @@ Our system extracted the following structured information:
 - Item involved: {extraction_data.get('item', 'not specified')}
 - Details: {extraction_data.get('details', 'not provided')}
 
+CRITICAL RULES:
+- Maximum 20 words
+- Maximum 1 sentence
+- Be direct and concise
+- No formal greetings like Hello! or sign-offs
+
+
 Write a helpful, warm, and concise response (2-3 sentences max) addressing their request.
 If the action is 'refund', explain the next steps.
 If the action is 'track_order', ask for their order number.

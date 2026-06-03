@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
+import uuid
+
 
 from app.core.database import get_db
 from app.services.ai_service import (
@@ -204,6 +206,8 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
     channel_id = str(client.get("_id") or phone_id)
     incoming_text = (text_data or "").strip()
 
+    interaction_id = str(uuid.uuid4())
+
     if not incoming_text:
         return {"status": "ignored", "reason": "empty_message"}
 
@@ -234,6 +238,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 client_config=client,
+                interaction_id=interaction_id,
             )
             reply = generate_response_with_openai(
                 extraction,
@@ -241,6 +246,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 client_config=client,
+                interaction_id=interaction_id,
             )
         elif ENABLE_AI_FALLBACK:
             reply = ai_fallback_response_openai(
@@ -248,6 +254,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 client_config=client,
+                interaction_id=interaction_id,
             )
         else:
             reply = "Thanks for your message. We will get back to you shortly."
