@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
+from app.services.priceservice import record_meta_conversation_usage
 
 from app.core.database import get_db
 from app.services.ai_service import (
@@ -11,6 +12,7 @@ from app.services.ai_service import (
     ai_fallback_response_openai,
     generate_response_with_openai,
 )
+from app.services.pricing_service import record_meta_conversation_usage
 
 logger = logging.getLogger(__name__)
 
@@ -228,10 +230,26 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
 
     if not reply:
         if ENABLE_AI_EXTRACTION:
-            extraction = ai_extract_info_openai(incoming_text)
-            reply = generate_response_with_openai(extraction, incoming_text)
+            extraction = ai_extract_info_openai(
+                incoming_text,
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                client_config=client,
+            )
+            reply = generate_response_with_openai(
+                extraction,
+                incoming_text,
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                client_config=client,
+            )
         elif ENABLE_AI_FALLBACK:
-            reply = ai_fallback_response_openai(incoming_text)
+            reply = ai_fallback_response_openai(
+                incoming_text,
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                client_config=client,
+            )
         else:
             reply = "Thanks for your message. We will get back to you shortly."
 
@@ -253,6 +271,12 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             "detail": send_result.get("detail"),
         }
 
+    try:
+        meta_usage = record_meta_conversation_usage(client, tenant_id, channel_id, from_phone, send_result)
+    except Exception:
+        logger.exception("Meta conversation usage tracking failed for tenant_id=%s", tenant_id)
+        meta_usage = {"status": "error"}
+
     save_message_record(
         tenant_id=tenant_id,
         channel_id=channel_id,
@@ -267,4 +291,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
         "tenant_id": tenant_id,
         "reply": reply,
         "send_result": send_result,
+        "meta_usage": meta_usage,
     }
+
+

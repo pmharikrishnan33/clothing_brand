@@ -1,13 +1,23 @@
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+from app.api.routes.usage import router as usage_router
 from app.core.client_manager import get_client_config
 from app.core.config import VERIFY_TOKEN
 from app.services.message_service import message_service
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
+app.include_router(usage_router)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.get("/usage-dashboard")
+def usage_dashboard():
+    return FileResponse(Path("app/static/usage-dashboard.html"))
 
 #----------GET REQUEST-----------
 

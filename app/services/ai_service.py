@@ -1,7 +1,10 @@
 import json
+import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from google import genai
+
+from app.services.pricing_service import extract_token_usage, record_ai_model_usage
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Using gemini-2.5-flash as the lightweight, fast default model
@@ -9,6 +12,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 # Initialize the official Google GenAI client
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+logger = logging.getLogger(__name__)
 
 def _strip_code_fences(text: str) -> str:
     text = text.strip()
@@ -25,7 +29,36 @@ def _response_text(response: Any) -> str:
     return ""
 
 # -------------------- GEMINI AI EXTRACTION -------------------- 
-def ai_extract_info_openai(message: str) -> dict:
+def _record_usage(
+    response: Any,
+    tenant_id: Optional[str],
+    channel_id: Optional[str],
+    operation: str,
+    client_config: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not tenant_id or not channel_id:
+        return
+
+    try:
+        record_ai_model_usage(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            provider="gemini",
+            model=GEMINI_MODEL,
+            operation=operation,
+            token_usage=extract_token_usage(response),
+            client_config=client_config,
+        )
+    except Exception:
+        logger.exception("AI usage tracking failed for tenant_id=%s operation=%s", tenant_id, operation)
+
+
+def ai_extract_info_openai(
+    message: str,
+    tenant_id: Optional[str] = None,
+    channel_id: Optional[str] = None,
+    client_config: Optional[Dict[str, Any]] = None,
+) -> dict:
     if not client:
         return {
             "action": "unknown",
@@ -47,6 +80,7 @@ Message: {message}"""
             model=GEMINI_MODEL,
             contents=prompt,
         )
+        _record_usage(response, tenant_id, channel_id, "extract_info", client_config)
         raw_text = _strip_code_fences(_response_text(response))
         return json.loads(raw_text)
     except Exception as e:
@@ -54,7 +88,13 @@ Message: {message}"""
         return {"action": "unknown", "item": None, "details": message}
 
 # -------------------- GEMINI AI RESPONSE GENERATOR -------------------- 
-def generate_response_with_openai(extraction_data: dict, original_message: str) -> str:
+def generate_response_with_openai(
+    extraction_data: dict,
+    original_message: str,
+    tenant_id: Optional[str] = None,
+    channel_id: Optional[str] = None,
+    client_config: Optional[Dict[str, Any]] = None,
+) -> str:
     if not client:
         return "I understood your request. A team member will follow up shortly."
         
@@ -78,13 +118,19 @@ Return only the plain response text. No code blocks, no JSON."""
             model=GEMINI_MODEL,
             contents=prompt,
         )
+        _record_usage(response, tenant_id, channel_id, "generate_response", client_config)
         return _response_text(response)
     except Exception as e:
         print(f"Gemini response generation error: {e}")
         return "I understood your request. A team member will follow up shortly."
 
 # -------------------- GEMINI AI FALLBACK FOR UNKNOWN -------------------- 
-def ai_fallback_response_openai(message: str) -> str:
+def ai_fallback_response_openai(
+    message: str,
+    tenant_id: Optional[str] = None,
+    channel_id: Optional[str] = None,
+    client_config: Optional[Dict[str, Any]] = None,
+) -> str:
     if not client:
         return "I'm not sure how to help with that. Could you rephrase or ask about our services?"
         
@@ -110,6 +156,7 @@ Return only the plain text response."""
             model=GEMINI_MODEL,
             contents=prompt,
         )
+        _record_usage(response, tenant_id, channel_id, "fallback_response", client_config)
         return _response_text(response)
     except Exception as e:
         print(f"Gemini fallback error: {e}")
