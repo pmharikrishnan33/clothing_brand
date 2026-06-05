@@ -54,7 +54,7 @@ def _record_usage(
     except Exception:
         logger.exception("AI usage tracking failed for tenant_id=%s operation=%s", tenant_id, operation)
 
-def ai_extract_info_openai(
+def ai_extract_info(
     message: str,
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
@@ -85,12 +85,12 @@ Message: {message}"""
         _record_usage(response, tenant_id, channel_id, "extract_info", client_config, interaction_id)
         raw_text = _strip_code_fences(_response_text(response))
         return json.loads(raw_text)
-    except Exception as e:
-        print(f"Gemini extraction error: {e}")
+    except Exception:
+        logger.exception("Gemini extraction error for tenant_id=%s", tenant_id)
         return {"action": "unknown", "item": None, "details": message}
 
 # -------------------- GEMINI AI RESPONSE GENERATOR -------------------- 
-def generate_response_with_openai(
+def generate_ai_response(
     extraction_data: dict,
     original_message: str,
     tenant_id: Optional[str] = None,
@@ -110,15 +110,14 @@ Our system extracted the following structured information:
 - Details: {extraction_data.get('details', 'not provided')}
 
 CRITICAL RULES:
-- Maximum 20 words
-- Maximum 1 sentence
+- Maximum 30 words
+- Maximum 2 sentences
 - Be direct and concise
 - No formal greetings like Hello! or sign-offs
 
-
-Write a helpful, warm, and concise response (2-3 sentences max) addressing their request.
-If the action is 'refund', explain the next steps.
-If the action is 'track_order', ask for their order number.
+Write a helpful, warm, and concise response addressing their request.
+If the action is 'refund', explain that we are processing it.
+If the action is 'track_order', ask for an order number.
 If the action is 'unknown', politely ask for clarification.
 Return only the plain response text. No code blocks, no JSON."""
     
@@ -130,12 +129,12 @@ Return only the plain response text. No code blocks, no JSON."""
         )
         _record_usage(response, tenant_id, channel_id, "generate_response", client_config, interaction_id)
         return _response_text(response)
-    except Exception as e:
-        print(f"Gemini response generation error: {e}")
+    except Exception:
+        logger.exception("Gemini response generation error for tenant_id=%s", tenant_id)
         return "I understood your request. A team member will follow up shortly."
 
 # -------------------- GEMINI AI FALLBACK FOR UNKNOWN -------------------- 
-def ai_fallback_response_openai(
+def ai_fallback_response(
     message: str,
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
@@ -154,8 +153,8 @@ Your task:
 3. If it's completely unrelated, politely explain that we handle automation and style inquiries.
 
 CRITICAL RULES:
-- Maximum 20 words
-- Maximum 1 sentence
+- Maximum 25 words
+- Maximum 2 sentences
 - Be direct and concise
 - No formal greetings like Hello! or sign-offs
 
@@ -169,6 +168,6 @@ Return only the plain text response."""
         )
         _record_usage(response, tenant_id, channel_id, "fallback_response", client_config, interaction_id)
         return _response_text(response)
-    except Exception as e:
-        print(f"Gemini fallback error: {e}")
+    except Exception:
+        logger.exception("Gemini fallback error for tenant_id=%s", tenant_id)
         return "I'm not sure how to help with that. Could you rephrase or ask about our services?"

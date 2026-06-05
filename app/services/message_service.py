@@ -1,17 +1,16 @@
 import json
 import logging
 from datetime import datetime, timezone
-import urllib.error
-import urllib.request
 from typing import Any, Dict, List, Optional
 import uuid
+import httpx
 
 
 from app.core.database import get_db
 from app.services.ai_service import (
-    ai_extract_info_openai,
-    ai_fallback_response_openai,
-    generate_response_with_openai,
+    ai_extract_info,
+    ai_fallback_response,
+    generate_ai_response,
 )
 from app.services.pricing_service import record_meta_conversation_usage
 
@@ -149,8 +148,12 @@ def save_conversation_touch(tenant_id: str, channel_id: str, customer_phone: str
     )
 
 
-def send_whatsapp_message(phone_number_id: str, access_token: str, to: str, body: str) -> Dict[str, Any]:
+async def send_whatsapp_message(phone_number_id: str, access_token: str, to: str, body: str) -> Dict[str, Any]:
     url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
@@ -158,28 +161,16 @@ def send_whatsapp_message(phone_number_id: str, access_token: str, to: str, body
         "text": {"body": body},
     }
 
-    data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        },
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            raw = response.read().decode("utf-8")
-            return json.loads(raw) if raw else {"status": "sent"}
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8") if exc.fp else str(exc)
-        logger.error("WhatsApp send error: %s", error_body)
-        return {"status": "error", "detail": error_body}
-    except Exception as exc:
-        logger.exception("Unexpected WhatsApp send error")
-        return {"status": "error", "detail": str(exc)}
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, json=payload, headers=headers, timeout=20.0)
+            if response.status_code >= 400:
+                logger.error("WhatsApp send error: %s", response.text)
+                return {"status": "error", "detail": response.text}
+            return response.json()
+        except Exception as exc:
+            logger.exception("Unexpected WhatsApp send error")
+            return {"status": "error", "detail": str(exc)}
 
 
 def _extract_message_text(message: Dict[str, Any]) -> str:
@@ -233,14 +224,14 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
 
     if not reply:
         if ENABLE_AI_EXTRACTION:
-            extraction = ai_extract_info_openai(
+            extraction = ai_extract_info(
                 incoming_text,
                 tenant_id=tenant_id,
                 channel_id=channel_id,
                 client_config=client,
                 interaction_id=interaction_id,
             )
-            reply = generate_response_with_openai(
+            reply = generate_ai_response(
                 extraction,
                 incoming_text,
                 tenant_id=tenant_id,
@@ -249,7 +240,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 interaction_id=interaction_id,
             )
         elif ENABLE_AI_FALLBACK:
-            reply = ai_fallback_response_openai(
+            reply = ai_fallback_response(
                 incoming_text,
                 tenant_id=tenant_id,
                 channel_id=channel_id,
@@ -268,7 +259,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             "reason": "missing_whatsapp_token",
         }
 
-    send_result = send_whatsapp_message(phone_id, access_token, from_phone, reply)
+    send_result = await send_whatsapp_message(phone_id, access_token, from_phone, reply)
     if send_result.get("status") == "error":
         return {
             "status": "error",
@@ -299,5 +290,3 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
         "send_result": send_result,
         "meta_usage": meta_usage,
     }
-
-

@@ -4,3 +4,4 @@ pymongo
 python-dotenv
 openai
 google-genai
+httpx

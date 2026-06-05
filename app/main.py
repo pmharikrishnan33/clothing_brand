@@ -1,12 +1,15 @@
+import hashlib
+import hmac
+import json
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Header
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.routes.usage import router as usage_router
 from app.core.client_manager import get_client_config
-from app.core.config import VERIFY_TOKEN
+from app.core.config import VERIFY_TOKEN, APP_SECRET
 from app.services.message_service import message_service
 
 app = FastAPI()
@@ -25,9 +28,26 @@ def verify(hub_mode: str = Query(None, alias="hub.mode"),
 
 #----------POST REQUEST-----------
 
+def verify_signature(payload: bytes, signature: str) -> bool:
+    if not APP_SECRET or not signature:
+        return False
+    # Meta prefixes the signature with sha256=
+    if signature.startswith("sha256="):
+        signature = signature[7:]
+    expected = hmac.new(
+        APP_SECRET.encode("utf-8"), payload, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
 @app.post("/webhook")
-async def webhook(request: Request):
-    body = await request.json()
+async def webhook(request: Request, x_hub_signature_256: str = Header(None)):
+    payload = await request.body()
+    
+    if not verify_signature(payload, x_hub_signature_256):
+        logger.warning("Webhook signature verification failed.")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    body = json.loads(payload)
     
     try:
         entry = body.get("entry", [{}])[0]
