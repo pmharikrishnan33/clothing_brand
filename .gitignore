@@ -1,9 +1,17 @@
-# Secrets and Local Config
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+env/
 .env
-
-# Python
-v
-
-
-# Distribution / packaging
-tbuilg-info/
+.DS_Store
+*.log
+*.sqlite3
+instance/
