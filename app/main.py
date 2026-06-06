@@ -41,7 +41,7 @@ async def test_shopify(q: str = "shirt", phone_id: Optional[str] = None):
             s_ver = client.get("shopify_api_version", "2024-01")
 
     products = await fetch_clothing_inventory(shop_url=s_url, access_token=s_token, api_version=s_ver, query=q)
-    summary = format_products_for_ai(products)
+    summary = format_products_for_ai(products, shop_url=s_url)
     return {"query": q, "count": len(products), "ai_summary": summary, "raw_data": products[:2]}
 
 #----------POST REQUEST-----------

@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
-import httpx
+from app.core.config import http_client, clean_shopify_url
 
 
 from app.core.database import get_db
@@ -175,16 +175,15 @@ async def send_whatsapp_message(
         payload["type"] = "text"
         payload["text"] = {"body": body}
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(url, json=payload, headers=headers, timeout=20.0)
-            if response.status_code >= 400:
-                logger.error("WhatsApp send error: %s", response.text)
-                return {"status": "error", "detail": response.text}
-            return response.json()
-        except Exception as exc:
-            logger.exception("Unexpected WhatsApp send error")
-            return {"status": "error", "detail": str(exc)}
+    try:
+        response = await http_client.post(url, json=payload, headers=headers)
+        if response.status_code >= 400:
+            logger.error("WhatsApp send error: %s", response.text)
+            return {"status": "error", "detail": response.text}
+        return response.json()
+    except Exception as exc:
+        logger.exception("Unexpected WhatsApp send error")
+        return {"status": "error", "detail": str(exc)}
 
 
 def _extract_message_text(message: Dict[str, Any]) -> str:
@@ -278,7 +277,10 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 item_query = extraction.get("item")
                 if item_query:
                     if ENABLE_SHOPIFY_INTEGRATION:
-                        products = await fetch_clothing_inventory(item_query)
+                        products = await fetch_clothing_inventory(
+                            shop_url=s_url, access_token=s_token, api_version=s_ver, 
+                            query=item_query
+                        )
                         if products:
                             img_data = products[0].get("image") or (products[0].get("images", [{}])[0] if products[0].get("images") else None)
                             featured_image = img_data.get("src") if img_data else None

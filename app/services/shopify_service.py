@@ -43,7 +43,7 @@ async def fetch_shopify_products(
     :param max_price: Optional float to filter results by price.
     :return: A list of product dictionaries.
     """
-    store_url = shop_url or SHOPIFY_STORE_URL
+    store_url = clean_shopify_url(shop_url) if shop_url else SHOPIFY_STORE_URL
     token = access_token or SHOPIFY_ACCESS_TOKEN
     version = api_version or SHOPIFY_API_VERSION
 
