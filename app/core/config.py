@@ -15,6 +15,7 @@ PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "zyphor_technologies")
 
 def clean_shopify_url(url: str) -> str:
     if not url:

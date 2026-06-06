@@ -239,7 +239,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
     if not reply:
         if ENABLE_AI_EXTRACTION:
             # Extract Shopify Config from DB Client object
-            s_url = clean_shopify_url(client.get("shopify_url", ""))
+            s_url = clean_shopify_url(client.get("shopify_url") or client.get("shopify_store_url") or "")
             s_token = client.get("shopify_access_token", "")
             s_ver = client.get("shopify_api_version", "2024-01")
 

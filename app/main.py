@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.routes.usage import router as usage_router
 from app.core.client_manager import get_client_config
-from app.core.config import VERIFY_TOKEN, APP_SECRET
+from app.core.config import VERIFY_TOKEN, APP_SECRET, clean_shopify_url
 from app.services.message_service import message_service
 from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai
 
@@ -35,8 +35,7 @@ async def test_shopify(q: str = "shirt", phone_id: Optional[str] = None):
     if phone_id:
         client = get_client_config(phone_id)
         if client:
-            from app.core.config import clean_shopify_url
-            s_url = clean_shopify_url(client.get("shopify_url", ""))
+            s_url = clean_shopify_url(client.get("shopify_url") or client.get("shopify_store_url") or "")
             s_token = client.get("shopify_access_token", "")
             s_ver = client.get("shopify_api_version", "2024-01")
 
@@ -47,6 +46,10 @@ async def test_shopify(q: str = "shirt", phone_id: Optional[str] = None):
 #----------POST REQUEST-----------
 
 def verify_signature(payload: bytes, signature: str) -> bool:
+    # Allow bypassing signature check in local development if desired
+    # if os.getenv("ENVIRONMENT") == "development":
+    #     return True
+        
     if not APP_SECRET or not signature:
         return False
     # Meta prefixes the signature with sha256=
