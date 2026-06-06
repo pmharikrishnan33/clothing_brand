@@ -58,6 +58,7 @@ def verify_signature(payload: bytes, signature: str) -> bool:
     #     return True
         
     if not APP_SECRET or not signature:
+        logger.error("Missing APP_SECRET or signature header")
         return False
     # Meta prefixes the signature with sha256=
     if signature.startswith("sha256="):
@@ -65,14 +66,17 @@ def verify_signature(payload: bytes, signature: str) -> bool:
     expected = hmac.new(
         APP_SECRET.encode("utf-8"), payload, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    is_valid = hmac.compare_digest(expected, signature)
+    if not is_valid:
+        logger.error(f"Signature mismatch. Expected: {expected}, Got: {signature}")
+    return is_valid
 
 @app.post("/webhook")
 async def webhook(request: Request, x_hub_signature_256: str = Header(None)):
     payload = await request.body()
+    logger.info(f"Received Webhook Payload: {payload.decode('utf-8')}")
     
     if not verify_signature(payload, x_hub_signature_256):
-        logger.warning("Webhook signature verification failed.")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
     body = json.loads(payload)
