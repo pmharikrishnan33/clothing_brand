@@ -3,15 +3,12 @@ import logging
 import os
 from typing import Any, Dict, Optional
 from google import genai
+from app.core.config import GEMINI_CLIENT as client, GEMINI_API_KEY
 
 from app.services.pricing_service import extract_token_usage, record_ai_model_usage
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Using gemini-2.5-flash as the lightweight, fast default model
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
-# Initialize the official Google GenAI client
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 logger = logging.getLogger(__name__)
 
 def _strip_code_fences(text: str) -> str:
@@ -97,10 +94,13 @@ def generate_ai_response(
     channel_id: Optional[str] = None,
     client_config: Optional[Dict[str, Any]] = None,
     interaction_id: Optional[str] = None,
+    inventory: Optional[str] = None,
 ) -> str:
     if not client:
         return "I understood your request. A team member will follow up shortly."
         
+    inventory_context = f"\nAVAILABLE INVENTORY:\n{inventory}" if inventory else ""
+
     prompt = f"""You are an AI Stylist and Concierge. Speak confidently, helper-oriented, and use 'we', 'our', and 'us'.
 A customer sent this message: {original_message}
 
@@ -108,6 +108,7 @@ Our system extracted the following structured information:
 - Action requested: {extraction_data.get('action', 'unknown')}
 - Item involved: {extraction_data.get('item', 'not specified')}
 - Details: {extraction_data.get('details', 'not provided')}
+{inventory_context}
 
 CRITICAL RULES:
 - Maximum 30 words
@@ -116,6 +117,7 @@ CRITICAL RULES:
 - No formal greetings like Hello! or sign-offs
 
 Write a helpful, warm, and concise response addressing their request.
+If inventory is provided and matches their item, suggest specific pieces.
 If the action is 'refund', explain that we are processing it.
 If the action is 'track_order', ask for an order number.
 If the action is 'unknown', politely ask for clarification.

@@ -3,6 +3,7 @@ import hmac
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -11,6 +12,7 @@ from app.api.routes.usage import router as usage_router
 from app.core.client_manager import get_client_config
 from app.core.config import VERIFY_TOKEN, APP_SECRET
 from app.services.message_service import message_service
+from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -25,6 +27,22 @@ def verify(hub_mode: str = Query(None, alias="hub.mode"),
     if hub_mode == "subscribe" and hub_token == VERIFY_TOKEN:
         return PlainTextResponse(content=hub_challenge)
     raise HTTPException(status_code=403)
+
+@app.get("/test-shopify-integration")
+async def test_shopify(q: str = "shirt", phone_id: Optional[str] = None):
+    """Debug endpoint to verify Shopify fetching logic."""
+    s_url, s_token, s_ver = None, None, None
+    if phone_id:
+        client = get_client_config(phone_id)
+        if client:
+            from app.core.config import clean_shopify_url
+            s_url = clean_shopify_url(client.get("shopify_url", ""))
+            s_token = client.get("shopify_access_token", "")
+            s_ver = client.get("shopify_api_version", "2024-01")
+
+    products = await fetch_clothing_inventory(shop_url=s_url, access_token=s_token, api_version=s_ver, query=q)
+    summary = format_products_for_ai(products)
+    return {"query": q, "count": len(products), "ai_summary": summary, "raw_data": products[:2]}
 
 #----------POST REQUEST-----------
 

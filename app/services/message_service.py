@@ -13,12 +13,14 @@ from app.services.ai_service import (
     generate_ai_response,
 )
 from app.services.pricing_service import record_meta_conversation_usage
+from app.services.shopify_service import extract_rules_info, fetch_clothing_inventory, format_products_for_ai
 
 logger = logging.getLogger(__name__)
 
 # -------------------- CONFIGURATION FLAGS --------------------
 ENABLE_AI_EXTRACTION = True
 ENABLE_AI_FALLBACK = True
+ENABLE_SHOPIFY_INTEGRATION = True
 
 
 def analyze_message(message: str, keywords: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -148,18 +150,30 @@ def save_conversation_touch(tenant_id: str, channel_id: str, customer_phone: str
     )
 
 
-async def send_whatsapp_message(phone_number_id: str, access_token: str, to: str, body: str) -> Dict[str, Any]:
+async def send_whatsapp_message(
+    phone_number_id: str, 
+    access_token: str, 
+    to: str, 
+    body: str, 
+    image_url: Optional[str] = None
+) -> Dict[str, Any]:
     url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
+    
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
-        "type": "text",
-        "text": {"body": body},
     }
+    
+    if image_url:
+        payload["type"] = "image"
+        payload["image"] = {"link": image_url, "caption": body}
+    else:
+        payload["type"] = "text"
+        payload["text"] = {"body": body}
 
     async with httpx.AsyncClient() as client:
         try:
@@ -196,6 +210,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
     tenant_id = str(client.get("tenant_id") or client.get("_id") or phone_id)
     channel_id = str(client.get("_id") or phone_id)
     incoming_text = (text_data or "").strip()
+    featured_image = None
 
     interaction_id = str(uuid.uuid4())
 
@@ -224,13 +239,52 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
 
     if not reply:
         if ENABLE_AI_EXTRACTION:
-            extraction = ai_extract_info(
-                incoming_text,
-                tenant_id=tenant_id,
-                channel_id=channel_id,
-                client_config=client,
-                interaction_id=interaction_id,
-            )
+            # Extract Shopify Config from DB Client object
+            s_url = clean_shopify_url(client.get("shopify_url", ""))
+            s_token = client.get("shopify_access_token", "")
+            s_ver = client.get("shopify_api_version", "2024-01")
+
+            # Step 1: Rule-Based Extraction
+            rules_data = extract_rules_info(incoming_text)
+            inventory_summary = None
+            
+            # Step 2: Try Product Search using Rules
+            if rules_data["has_data"]:
+                if ENABLE_SHOPIFY_INTEGRATION:
+                    search_query = f"{rules_data['color'] or ''} {rules_data['type'] or ''}".strip() or rules_data['category']
+                    products = await fetch_clothing_inventory(
+                        shop_url=s_url, access_token=s_token, api_version=s_ver,
+                        query=search_query, 
+                        category=rules_data['category'], 
+                        max_price=rules_data['max_price']
+                    )
+                    if products:
+                        # Extract image URL from the first product
+                        img_data = products[0].get("image") or (products[0].get("images", [{}])[0] if products[0].get("images") else None)
+                        featured_image = img_data.get("src") if img_data else None
+                    
+                    inventory_summary = format_products_for_ai(products, shop_url=s_url)
+                extraction = {"action": "inquiry", "item": rules_data['category'], "details": "Extracted via rules"}
+            
+            # Step 3: Fallback to AI Extraction if Rules yielded nothing
+            else:
+                extraction = ai_extract_info(
+                    incoming_text,
+                    tenant_id=tenant_id,
+                    channel_id=channel_id,
+                    client_config=client,
+                    interaction_id=interaction_id,
+                )
+                item_query = extraction.get("item")
+                if item_query:
+                    if ENABLE_SHOPIFY_INTEGRATION:
+                        products = await fetch_clothing_inventory(item_query)
+                        if products:
+                            img_data = products[0].get("image") or (products[0].get("images", [{}])[0] if products[0].get("images") else None)
+                            featured_image = img_data.get("src") if img_data else None
+                            
+                        inventory_summary = format_products_for_ai(products, shop_url=s_url)
+
             reply = generate_ai_response(
                 extraction,
                 incoming_text,
@@ -238,7 +292,13 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 channel_id=channel_id,
                 client_config=client,
                 interaction_id=interaction_id,
+                inventory=inventory_summary,
             )
+            
+            # Append catalogue details to the AI greeting if products were found
+            if inventory_summary and "matching items" not in inventory_summary.lower():
+                reply = f"{reply}\n\n{inventory_summary}"
+
         elif ENABLE_AI_FALLBACK:
             reply = ai_fallback_response(
                 incoming_text,
@@ -259,7 +319,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             "reason": "missing_whatsapp_token",
         }
 
-    send_result = await send_whatsapp_message(phone_id, access_token, from_phone, reply)
+    send_result = await send_whatsapp_message(phone_id, access_token, from_phone, reply, image_url=featured_image)
     if send_result.get("status") == "error":
         return {
             "status": "error",

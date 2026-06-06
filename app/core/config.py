@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+import httpx
 
 GEMINI_CLIENT = None
 
@@ -13,6 +14,21 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
+SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL")
+
+_raw_url = os.getenv("SHOPIFY_STORE_URL", "")
+if "admin.shopify.com/store/" in _raw_url:
+    # Automatically extracts 'h9djim-xy' and appends '.myshopify.com'
+    SHOPIFY_STORE_URL = _raw_url.split("admin.shopify.com/store/")[-1].rstrip("/") + ".myshopify.com"
+else:
+    # Standard cleanup for direct myshopify domains
+    SHOPIFY_STORE_URL = _raw_url.replace("https://", "").replace("http://", "").rstrip("/")
+
+SHOPIFY_ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2024-01")
+
+# Global HTTP client for connection pooling
+http_client = httpx.AsyncClient(timeout=20.0)
 
 if GEMINI_API_KEY:
     try:
