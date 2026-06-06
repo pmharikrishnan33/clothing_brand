@@ -18,6 +18,13 @@ app = FastAPI()
 logger = logging.getLogger(__name__)
 app.include_router(usage_router)
 
+# Handle favicon requests to prevent 404 errors in production logs
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.png", include_in_schema=False)
+async def favicon():
+    file_path = Path("static/favicon.png")
+    return FileResponse(file_path) if file_path.exists() else PlainTextResponse("", status_code=204)
+
 #----------GET REQUEST-----------
 
 @app.get("/webhook")
