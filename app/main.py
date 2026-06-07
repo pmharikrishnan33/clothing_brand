@@ -25,6 +25,11 @@ async def favicon():
     file_path = Path("static/favicon.png")
     return FileResponse(file_path) if file_path.exists() else PlainTextResponse("", status_code=204)
 
+@app.get("/", include_in_schema=False)
+async def root():
+    """Root endpoint to verify the API is online."""
+    return {"status": "online", "service": "Zyphor Backend"}
+
 #----------GET REQUEST-----------
 
 @app.get("/webhook")
