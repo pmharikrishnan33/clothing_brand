@@ -1,7 +1,8 @@
 import logging
 import re
+from datetime import datetime
 from typing import List, Dict, Any, Optional
-from app.core.config import SHOPIFY_STORE_URL, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION, http_client, clean_shopify_url
+from app.core.config import http_client, clean_shopify_url
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +44,21 @@ async def fetch_shopify_products(
     :param max_price: Optional float to filter results by price.
     :return: A list of product dictionaries.
     """
-    store_url = clean_shopify_url(shop_url) if shop_url else SHOPIFY_STORE_URL
-    token = access_token or SHOPIFY_ACCESS_TOKEN
-    version = api_version or SHOPIFY_API_VERSION
+    store_url = clean_shopify_url(shop_url) if shop_url else None
+    token = access_token
+    
+    # Production Safety: Validate version format YYYY-MM and ensure it's not a future version
+    current_version = "2024-01"
+    version = api_version if api_version and re.match(r"^\d{4}-\d{2}$", api_version) else current_version
+    
+    try:
+        if int(version.split("-")[0]) > datetime.now().year + 1:
+            version = current_version
+    except:
+        version = current_version
 
     if not store_url or not token:
-        logger.error("Shopify configuration missing for this request.")
+        logger.error("Shopify configuration (URL or Token) missing. Multi-tenant credentials are required.")
         return []
 
     url = f"https://{store_url}/admin/api/{version}/products.json"

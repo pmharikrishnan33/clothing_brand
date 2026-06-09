@@ -94,7 +94,7 @@ def extract_token_usage(response: Any) -> Dict[str, int]:
     }
 
 
-def record_ai_model_usage(
+async def record_ai_model_usage(
     tenant_id: str,
     channel_id: str,
     provider: str,
@@ -148,7 +148,7 @@ def record_ai_model_usage(
                 "operations": operation
             }
         }
-        db.ai_model_usage.update_one(
+        await db.ai_model_usage.update_one(
             {"tenant_id": tenant_id, "interaction_id": interaction_id, "model": model}, 
             update_data, 
             upsert=True
@@ -176,11 +176,11 @@ def record_ai_model_usage(
             },
             "created_at": now,
         }
-        get_db().ai_model_usage.insert_one(document)
+        await db.ai_model_usage.insert_one(document)
         return document
 
 
-def record_meta_conversation_usage(
+async def record_meta_conversation_usage(
     client: Dict[str, Any],
     tenant_id: str,
     channel_id: str,
@@ -200,7 +200,7 @@ def record_meta_conversation_usage(
     )
     currency = _currency(client)
 
-    active = db.meta_conversation_usage.find_one(
+    active = await db.meta_conversation_usage.find_one(
         {
             "tenant_id": tenant_id,
             "client_id": identity["client_id"],
@@ -239,7 +239,7 @@ def record_meta_conversation_usage(
         "created_at": now,
     }
 
-    inserted = db.meta_conversation_usage.insert_one(document)
+    inserted = await db.meta_conversation_usage.insert_one(document)
     return {"status": "created", "conversation_id": str(inserted.inserted_id), "price": price, "currency": currency}
 
 
@@ -254,13 +254,12 @@ def _match_for_tenant(tenant_id: str, start_at: Optional[datetime], end_at: Opti
     return query
 
 
-def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end_at: Optional[datetime] = None) -> Dict[str, Any]:
+async def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end_at: Optional[datetime] = None) -> Dict[str, Any]:
     db = get_db()
     ai_match = _match_for_tenant(tenant_id, start_at, end_at)
     meta_match = _match_for_tenant(tenant_id, start_at, end_at)
 
-    ai_by_model = list(
-        db.ai_model_usage.aggregate(
+    ai_by_model = await db.ai_model_usage.aggregate(
             [
                 {"$match": ai_match},
                 {
@@ -275,10 +274,9 @@ def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end_at: O
                 },
                 {"$sort": {"total_cost": -1}},
             ]
-        )
-    )
-    meta_by_category_raw = list(
-        db.meta_conversation_usage.aggregate(
+        ).to_list(length=None)
+
+    meta_by_category_raw = await db.meta_conversation_usage.aggregate(
             [
                 {"$match": meta_match},
                 {
@@ -289,8 +287,7 @@ def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end_at: O
                     }
                 },
             ]
-        )
-    )
+        ).to_list(length=None)
     
     currency = DEFAULT_CURRENCY
 

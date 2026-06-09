@@ -3,9 +3,9 @@ from typing import Any, Dict, Optional
 from app.core.database import get_db
 
 
-def get_client_config(phone_number_id: str) -> Optional[Dict[str, Any]]:
+async def get_client_config(phone_number_id: str) -> Optional[Dict[str, Any]]:
     db = get_db()
-    client = db.clients.find_one({"phone_number_id": str(phone_number_id), "is_active": {"$ne": False}})
+    client = await db.clients.find_one({"phone_number_id": str(phone_number_id), "is_active": {"$ne": False}})
     if not client:
         return None
 

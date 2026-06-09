@@ -4,17 +4,28 @@ import json
 import logging
 from pathlib import Path
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.routes.usage import router as usage_router
 from app.core.client_manager import get_client_config
+from app.core.database import init_db
 from app.core.config import VERIFY_TOKEN, APP_SECRET, clean_shopify_url
 from app.services.message_service import message_service
 from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Trigger database connection on startup to show the connection status in terminal
+    try:
+        await init_db()
+    except Exception as e:
+        print(f"🔥 Database initialization failed: {e}")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
 app.include_router(usage_router)
 
@@ -45,7 +56,7 @@ async def test_shopify(q: str = "shirt", phone_id: Optional[str] = None):
     """Debug endpoint to verify Shopify fetching logic."""
     s_url, s_token, s_ver = None, None, None
     if phone_id:
-        client = get_client_config(phone_id)
+        client = await get_client_config(phone_id)
         if client:
             s_url = clean_shopify_url(client.get("shopify_url") or client.get("shopify_store_url") or "")
             s_token = client.get("shopify_access_token", "")
@@ -109,7 +120,7 @@ async def webhook(request: Request, x_hub_signature_256: str = Header(None)):
             )
 
         # Fetch the specific client configuration from DB
-        client = get_client_config(phone_id)
+        client = await get_client_config(phone_id)
         if not client:
             logger.error("Client not found for phone_number_id=%s", phone_id)
             return {"status": "client_not_found"}

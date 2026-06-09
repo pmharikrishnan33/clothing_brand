@@ -1,6 +1,8 @@
 import json
+import asyncio
 import logging
 import os
+import string
 from typing import Any, Dict, Optional
 from google import genai
 from app.core.config import GEMINI_CLIENT as client, GEMINI_API_KEY
@@ -9,10 +11,50 @@ from app.services.pricing_service import extract_token_usage, record_ai_model_us
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
+# --- DEFAULT PROMPT TEMPLATES ---
+class SafeFormatter(string.Formatter):
+    """Formatter that ignores missing keys to prevent KeyError."""
+    def get_value(self, key, args, kwargs):
+        if isinstance(key, str):
+            return kwargs.get(key, f"{{{key}}}")
+        return super().get_value(key, args, kwargs)
+
+DEFAULT_EXTRACTION_PROMPT = """{persona}
+Given a message, return a JSON object with the following fields:
+- action: the main action the customer wants (e.g., refund, track_order, complaint, inquiry)
+- item: the product/item mentioned, if any (e.g., shirt, laptop), else null
+- details: a short summary of the request
+Only return valid JSON, nothing else.
+Message: {message}"""
+
+DEFAULT_RESPONSE_PROMPT = """{persona}
+A customer sent this message: {original_message}
+
+Our system extracted the following structured information:
+- Action requested: {action}
+- Item involved: {item}
+- Details: {details}
+{inventory_context}
+
+CRITICAL RULES:
+- Maximum 30 words
+- Maximum 2 sentences
+- Be direct and concise
+- No formal greetings like Hello! or sign-offs
+
+Write a helpful, warm, and concise response addressing their request.
+Return only the plain response text."""
+
+DEFAULT_FALLBACK_PROMPT = """{persona} A customer sent this message: {message}
+This message doesn't match any of our predefined topics. Respond warmly if greeting, else explain our scope.
+CRITICAL: Max 25 words, no sign-offs."""
+
 logger = logging.getLogger(__name__)
 
+safe_formatter = SafeFormatter()
+
 def _strip_code_fences(text: str) -> str:
-    text = text.strip()
+    text = text.strip().replace("“", "\"").replace("”", "\"")  # Handle fancy quotes
     if text.startswith("```"):
         text = text.strip("```").strip()
     if text.lower().startswith("json"):
@@ -26,7 +68,7 @@ def _response_text(response: Any) -> str:
     return ""
 
 # -------------------- GEMINI AI EXTRACTION -------------------- 
-def _record_usage(
+async def _record_usage(
     response: Any,
     tenant_id: Optional[str],
     channel_id: Optional[str],
@@ -38,7 +80,7 @@ def _record_usage(
         return
 
     try:
-        record_ai_model_usage(
+        await record_ai_model_usage(
             tenant_id=tenant_id,
             channel_id=channel_id,
             provider="gemini",
@@ -51,7 +93,7 @@ def _record_usage(
     except Exception:
         logger.exception("AI usage tracking failed for tenant_id=%s operation=%s", tenant_id, operation)
 
-def ai_extract_info(
+async def ai_extract_info(
     message: str,
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
@@ -64,22 +106,23 @@ def ai_extract_info(
             "item": None,
             "details": message,
         }
-        
-    prompt = f"""You are a helpful assistant that extracts structured information from customer messages. 
-Given a message, return a JSON object with the following fields:
-- action: the main action the customer wants (e.g., refund, track_order, complaint, inquiry)
-- item: the product/item mentioned, if any (e.g., shirt, laptop), else null
-- details: a short summary of the request
-Only return valid JSON, nothing else.
-Message: {message}"""
+
+    config = client_config or {}
+    persona = config.get("ai_extraction_prompt") or "You are a helpful assistant that extracts structured information."
+    template = config.get("full_extraction_prompt") or DEFAULT_EXTRACTION_PROMPT
     
     try:
-        # Replaced client.responses.create with client.models.generate_content
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
+        prompt = safe_formatter.format(template, 
+            persona=persona,
+            message=message
         )
-        _record_usage(response, tenant_id, channel_id, "extract_info", client_config, interaction_id)
+        
+        # Run synchronous AI call in a separate thread to prevent blocking
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=GEMINI_MODEL, contents=prompt
+        )
+        await _record_usage(response, tenant_id, channel_id, "extract_info", client_config, interaction_id)
         raw_text = _strip_code_fences(_response_text(response))
         return json.loads(raw_text)
     except Exception:
@@ -87,7 +130,7 @@ Message: {message}"""
         return {"action": "unknown", "item": None, "details": message}
 
 # -------------------- GEMINI AI RESPONSE GENERATOR -------------------- 
-def generate_ai_response(
+async def generate_ai_response(
     extraction_data: dict,
     original_message: str,
     tenant_id: Optional[str] = None,
@@ -101,42 +144,34 @@ def generate_ai_response(
         
     inventory_context = f"\nAVAILABLE INVENTORY:\n{inventory}" if inventory else ""
 
-    prompt = f"""You are an AI Stylist and Concierge. Speak confidently, helper-oriented, and use 'we', 'our', and 'us'.
-A customer sent this message: {original_message}
-
-Our system extracted the following structured information:
-- Action requested: {extraction_data.get('action', 'unknown')}
-- Item involved: {extraction_data.get('item', 'not specified')}
-- Details: {extraction_data.get('details', 'not provided')}
-{inventory_context}
-
-CRITICAL RULES:
-- Maximum 30 words
-- Maximum 2 sentences
-- Be direct and concise
-- No formal greetings like Hello! or sign-offs
-
-Write a helpful, warm, and concise response addressing their request.
-If inventory is provided and matches their item, suggest specific pieces.
-If the action is 'refund', explain that we are processing it.
-If the action is 'track_order', ask for an order number.
-If the action is 'unknown', politely ask for clarification.
-Return only the plain response text. No code blocks, no JSON."""
+    config = client_config or {}
+    persona = config.get("ai_system_prompt") or "You are an AI Stylist and Concierge."
+    template = config.get("full_response_prompt") or DEFAULT_RESPONSE_PROMPT
     
     try:
-        # Replaced client.responses.create with client.models.generate_content
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
+        # Inject all dynamic variables into the template from DB
+        prompt = safe_formatter.format(template, 
+            persona=persona,
+            original_message=original_message,
+            action=extraction_data.get('action', 'unknown'),
+            item=extraction_data.get('item', 'not specified'),
+            details=extraction_data.get('details', 'not provided'),
+            inventory_context=inventory_context
         )
-        _record_usage(response, tenant_id, channel_id, "generate_response", client_config, interaction_id)
+
+        # Run synchronous AI call in a separate thread
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=GEMINI_MODEL, contents=prompt
+        )
+        await _record_usage(response, tenant_id, channel_id, "generate_response", client_config, interaction_id)
         return _response_text(response)
     except Exception:
         logger.exception("Gemini response generation error for tenant_id=%s", tenant_id)
         return "I understood your request. A team member will follow up shortly."
 
 # -------------------- GEMINI AI FALLBACK FOR UNKNOWN -------------------- 
-def ai_fallback_response(
+async def ai_fallback_response(
     message: str,
     tenant_id: Optional[str] = None,
     channel_id: Optional[str] = None,
@@ -146,29 +181,22 @@ def ai_fallback_response(
     if not client:
         return "I'm not sure how to help with that. Could you rephrase or ask about our services?"
         
-    prompt = f"""You are an AI Stylist and Concierge. A customer sent this message: {message}
-This message doesn't match any of our predefined topics.
-
-Your task:
-1. If the message is a greeting, respond warmly and ask how you can help.
-2. If it's a question we might handle, try to help or suggest they rephrase.
-3. If it's completely unrelated, politely explain that we handle automation and style inquiries.
-
-CRITICAL RULES:
-- Maximum 25 words
-- Maximum 2 sentences
-- Be direct and concise
-- No formal greetings like Hello! or sign-offs
-
-Return only the plain text response."""
+    config = client_config or {}
+    persona = config.get("ai_fallback_prompt") or "You are an AI Stylist and Concierge."
+    template = config.get("full_fallback_prompt") or DEFAULT_FALLBACK_PROMPT
     
     try:
-        # Replaced client.responses.create with client.models.generate_content
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
+        prompt = safe_formatter.format(template, 
+            persona=persona,
+            message=message
         )
-        _record_usage(response, tenant_id, channel_id, "fallback_response", client_config, interaction_id)
+
+        # Run synchronous AI call in a separate thread
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=GEMINI_MODEL, contents=prompt
+        )
+        await _record_usage(response, tenant_id, channel_id, "fallback_response", client_config, interaction_id)
         return _response_text(response)
     except Exception:
         logger.exception("Gemini fallback error for tenant_id=%s", tenant_id)

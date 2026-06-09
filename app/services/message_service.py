@@ -28,18 +28,29 @@ def analyze_message(message: str, keywords: List[Dict[str, Any]]) -> Dict[str, A
     matched = []
 
     for item in keywords:
-        kw = str(item.get("keyword", "")).lower()
+        keywords_list = item.get("keywords", [])
+        # Fallback to legacy single keyword field if keywords list is empty
+        if not keywords_list and item.get("keyword"):
+            keywords_list = [item.get("keyword")]
+            
         match_type = item.get("match_type", "contains")
+        is_match = False
 
-        if not kw:
-            continue
+        for kw in keywords_list:
+            kw_lower = str(kw).lower()
+            if not kw_lower:
+                continue
 
-        if match_type == "contains" and kw in msg_lower:
-            matched.append(item)
-        elif match_type == "exact" and msg_lower == kw:
-            matched.append(item)
-        elif match_type == "startswith" and msg_lower.startswith(kw):
-            matched.append(item)
+            if match_type == "contains" and kw_lower in msg_lower:
+                is_match = True
+            elif match_type == "exact" and msg_lower == kw_lower:
+                is_match = True
+            elif match_type == "startswith" and msg_lower.startswith(kw_lower):
+                is_match = True
+            
+            if is_match:
+                matched.append(item)
+                break
 
     result = {
         "matched": matched,
@@ -69,7 +80,7 @@ def save_learned_keywords(filepath: str, learned: List[Dict[str, Any]]) -> None:
         json.dump(learned, f, ensure_ascii=False, indent=2)
 
 
-def save_learned_combination(
+async def save_learned_combination(
     tenant_id: str,
     keywords_list: List[str],
     response: str,
@@ -88,7 +99,7 @@ def save_learned_combination(
         "keywords": sorted_keywords,
         "response": response,
     }
-    db.learned_responses.insert_one(document)
+    await db.learned_responses.insert_one(document)
 
     learned.append(document)
 
@@ -96,19 +107,19 @@ def save_learned_combination(
         save_learned_keywords(filepath, learned)
 
 
-def get_keywords_by_tenant(tenant_id: str) -> List[Dict[str, Any]]:
+async def get_keywords_by_tenant(tenant_id: str) -> List[Dict[str, Any]]:
     db = get_db()
     cursor = db.keywords.find({"tenant_id": tenant_id, "is_active": {"$ne": False}})
-    return list(cursor)
+    return await cursor.to_list(length=None)
 
 
-def get_learned_keywords_by_tenant(tenant_id: str) -> List[Dict[str, Any]]:
+async def get_learned_keywords_by_tenant(tenant_id: str) -> List[Dict[str, Any]]:
     db = get_db()
     cursor = db.learned_responses.find({"tenant_id": tenant_id})
-    return list(cursor)
+    return await cursor.to_list(length=None)
 
 
-def save_message_record(
+async def save_message_record(
     tenant_id: str,
     channel_id: str,
     customer_phone: str,
@@ -117,7 +128,7 @@ def save_message_record(
     raw_payload: Optional[Dict[str, Any]] = None,
 ) -> None:
     db = get_db()
-    db.messages.insert_one(
+    await db.messages.insert_one(
         {
             "tenant_id": tenant_id,
             "channel_id": channel_id,
@@ -129,9 +140,9 @@ def save_message_record(
     )
 
 
-def save_conversation_touch(tenant_id: str, channel_id: str, customer_phone: str) -> None:
+async def save_conversation_touch(tenant_id: str, channel_id: str, customer_phone: str) -> None:
     db = get_db()
-    db.conversations.update_one(
+    await db.conversations.update_one(
         {
             "tenant_id": tenant_id,
             "channel_id": channel_id,
@@ -216,7 +227,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
     if not incoming_text:
         return {"status": "ignored", "reason": "empty_message"}
 
-    save_message_record(
+    await save_message_record(
         tenant_id=tenant_id,
         channel_id=channel_id,
         customer_phone=from_phone,
@@ -224,16 +235,22 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
         body=incoming_text,
         raw_payload={"phone_id": phone_id},
     )
-    save_conversation_touch(tenant_id, channel_id, from_phone)
+    await save_conversation_touch(tenant_id, channel_id, from_phone)
 
-    keywords = get_keywords_by_tenant(tenant_id)
+    keywords = await get_keywords_by_tenant(tenant_id)
     analysis = analyze_message(incoming_text, keywords)
 
     reply = analysis.get("simple_reply")
-    learned = get_learned_keywords_by_tenant(tenant_id)
+    learned = await get_learned_keywords_by_tenant(tenant_id)
 
     if reply is None and analysis.get("matched"):
-        matched_keywords = [item.get("keyword", "") for item in analysis["matched"] if item.get("keyword")]
+        # Collect the primary keyword (first in the list) from each matched group 
+        # to maintain compatibility with the learned responses logic.
+        matched_keywords = []
+        for item in analysis["matched"]:
+            kws = item.get("keywords") or ([item.get("keyword")] if item.get("keyword") else [])
+            if kws:
+                matched_keywords.append(kws[0])
         reply = lookup_learned_keywords(matched_keywords, learned)
 
     if not reply:
@@ -267,7 +284,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             
             # Step 3: Fallback to AI Extraction if Rules yielded nothing
             else:
-                extraction = ai_extract_info(
+                extraction = await ai_extract_info(
                     incoming_text,
                     tenant_id=tenant_id,
                     channel_id=channel_id,
@@ -287,7 +304,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                             
                         inventory_summary = format_products_for_ai(products, shop_url=s_url)
 
-            reply = generate_ai_response(
+            reply = await generate_ai_response(
                 extraction,
                 incoming_text,
                 tenant_id=tenant_id,
@@ -302,7 +319,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 reply = f"{reply}\n\n{inventory_summary}"
 
         elif ENABLE_AI_FALLBACK:
-            reply = ai_fallback_response(
+            reply = await ai_fallback_response(
                 incoming_text,
                 tenant_id=tenant_id,
                 channel_id=channel_id,
@@ -331,12 +348,12 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
         }
 
     try:
-        meta_usage = record_meta_conversation_usage(client, tenant_id, channel_id, from_phone, send_result)
+        meta_usage = await record_meta_conversation_usage(client, tenant_id, channel_id, from_phone, send_result)
     except Exception:
         logger.exception("Meta conversation usage tracking failed for tenant_id=%s", tenant_id)
         meta_usage = {"status": "error"}
 
-    save_message_record(
+    await save_message_record(
         tenant_id=tenant_id,
         channel_id=channel_id,
         customer_phone=from_phone,
