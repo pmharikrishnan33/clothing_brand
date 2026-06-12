@@ -101,6 +101,7 @@ async def ai_extract_info(
     interaction_id: Optional[str] = None,
 ) -> dict:
     if not client:
+        logger.error("AI client (Gemini) is not initialized. Check GEMINI_API_KEY environment variable. Returning default extraction data.")
         return {
             "action": "unknown",
             "item": None,
@@ -140,6 +141,7 @@ async def generate_ai_response(
     inventory: Optional[str] = None,
 ) -> str:
     if not client:
+        logger.error("AI client (Gemini) is not initialized. Check GEMINI_API_KEY environment variable. Returning generic response fallback.")
         return "I understood your request. A team member will follow up shortly."
         
     inventory_context = f"\nAVAILABLE INVENTORY:\n{inventory}" if inventory else ""
@@ -179,6 +181,7 @@ async def ai_fallback_response(
     interaction_id: Optional[str] = None,
 ) -> str:
     if not client:
+        logger.error("AI client (Gemini) is not initialized. Check GEMINI_API_KEY environment variable. Returning generic fallback response.")
         return "I'm not sure how to help with that. Could you rephrase or ask about our services?"
         
     config = client_config or {}
