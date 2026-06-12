@@ -9,7 +9,7 @@ from app.core.config import GEMINI_CLIENT as client, GEMINI_API_KEY
 
 from app.services.pricing_service import extract_token_usage, record_ai_model_usage
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 # --- DEFAULT PROMPT TEMPLATES ---
 class SafeFormatter(string.Formatter):
