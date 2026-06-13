@@ -20,7 +20,7 @@ async def test_fetch(phone_id: str, query: str):
     
     try:
         # Fetch config from MongoDB
-        client = get_client_config(phone_id)
+        client = await get_client_config(phone_id)
         if not client:
             logger.error(f"Client lookup failed for phone_number_id: {phone_id}")
             return
