@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
@@ -60,7 +61,12 @@ def analyze_message(message: str, keywords: List[Dict[str, Any]]) -> Dict[str, A
     }
 
     if len(matched) == 1:
-        result["simple_reply"] = matched[0].get("response")
+        # Support both 'response' (string) and 'responses' (list of strings)
+        responses = matched[0].get("responses")
+        if isinstance(responses, list) and responses:
+            result["simple_reply"] = random.choice(responses)
+        else:
+            result["simple_reply"] = matched[0].get("response")
 
     return result
 
@@ -94,13 +100,15 @@ async def save_learned_combination(
     for entry in learned:
         if sorted(entry.get("keywords", [])) == sorted_keywords:
             return
-
-    document = {
-        "tenant_id": tenant_id,
-        "keywords": sorted_keywords,
-        "response": response,
-    }
-    await db.learned_responses.insert_one(document)
+    
+    new_entry = {"keywords": sorted_keywords, "response": response}
+    
+    # UPSERT: Add to the 'learned' array inside the tenant's single document
+    await db.learned_keywords.update_one(
+        {"tenant_id": tenant_id},
+        {"$push": {"learned": new_entry}},
+        upsert=True
+    )
 
     learned.append(document)
 
@@ -110,14 +118,17 @@ async def save_learned_combination(
 
 async def get_keywords_by_tenant(tenant_id: str) -> List[Dict[str, Any]]:
     db = get_db()
-    cursor = db.keywords.find({"tenant_id": tenant_id, "is_active": {"$ne": False}})
-    return await cursor.to_list(length=None)
+    doc = await db.keywords.find_one({"tenant_id": tenant_id})
+    if not doc:
+        return []
+    # Filter active rules from the client's 'rules' array
+    return [r for r in doc.get("rules", []) if r.get("is_active") is not False]
 
 
 async def get_learned_keywords_by_tenant(tenant_id: str) -> List[Dict[str, Any]]:
     db = get_db()
-    cursor = db.learned_responses.find({"tenant_id": tenant_id})
-    return await cursor.to_list(length=None)
+    doc = await db.learned_keywords.find_one({"tenant_id": tenant_id})
+    return doc.get("learned", []) if doc else []
 
 
 async def save_message_record(

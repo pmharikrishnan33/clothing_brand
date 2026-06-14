@@ -28,7 +28,7 @@ async def add_inventory_item(tenant_id: str, item_data: Dict[str, Any]) -> str:
     db = get_db()
     document = _prepare_item(tenant_id, item_data)
     # Insert into client-specific collection
-    result = await db[f"inventory_{tenant_id}"].insert_one(document)
+    result = await db[f"inventory.{tenant_id}"].insert_one(document)
     return str(result.inserted_id)
 
 async def bulk_add_inventory_items(tenant_id: str, items_list: List[Dict[str, Any]]) -> List[str]:
@@ -41,7 +41,7 @@ async def bulk_add_inventory_items(tenant_id: str, items_list: List[Dict[str, An
     
     db = get_db()
     documents = [_prepare_item(tenant_id, item) for item in items_list]
-    result = await db[f"inventory_{tenant_id}"].insert_many(documents)
+    result = await db[f"inventory.{tenant_id}"].insert_many(documents)
     return [str(i) for i in result.inserted_ids]
 
 async def get_inventory_by_tenant(tenant_id: str, limit: int = 50) -> List[Dict[str, Any]]:
@@ -50,7 +50,7 @@ async def get_inventory_by_tenant(tenant_id: str, limit: int = 50) -> List[Dict[
     """
     db = get_db()
     # Access the client-specific collection directly
-    collection = db[f"inventory_{tenant_id}"]
+    collection = db[f"inventory.{tenant_id}"]
     cursor = collection.find().sort("created_at", -1).limit(limit)
     items = await cursor.to_list(length=limit)
     
@@ -68,7 +68,7 @@ async def search_tenant_inventory(
 ) -> List[Dict[str, Any]]:
     """Searches the client-specific collection based on rules."""
     db = get_db()
-    collection = db[f"inventory_{tenant_id}"]
+    collection = db[f"inventory.{tenant_id}"]
     
     filter_doc = {}
     if category:
