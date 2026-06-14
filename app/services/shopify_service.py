@@ -97,7 +97,7 @@ def extract_rules_info(message: str) -> Dict[str, Any]:
     """Extracts structured data using regex and keyword dictionaries (No AI)."""
     msg = message.lower()
     
-    detected_color = next((c for c in COLORS if c in msg), None)
+    detected_colors = [c for c in COLORS if c in msg]
     
     detected_category = None
     for cat, keywords in CATEGORIES.items():
@@ -118,11 +118,11 @@ def extract_rules_info(message: str) -> Dict[str, Any]:
         max_price = float(price_match.group(1))
 
     return {
-        "color": detected_color,
+        "colors": detected_colors,
         "category": detected_category,
         "type": detected_type,
         "max_price": max_price,
-        "has_data": any([detected_color, detected_category, detected_type, max_price])
+        "has_data": any([detected_colors, detected_category, detected_type, max_price])
     }
 
 async def fetch_clothing_inventory(

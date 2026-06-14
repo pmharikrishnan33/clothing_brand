@@ -7,6 +7,7 @@ from app.core.config import http_client, clean_shopify_url
 
 
 from app.core.database import get_db
+from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai
 from app.services.ai_service import (
     ai_extract_info,
     ai_fallback_response,
@@ -255,6 +256,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
 
     if not reply:
         if ENABLE_AI_EXTRACTION:
+            inventory_source = client.get("inventory_source", "manual")
             # Extract Shopify Config from DB Client object
             s_url = clean_shopify_url(client.get("shopify_url") or client.get("shopify_store_url") or "")
             s_token = client.get("shopify_access_token", "")
@@ -266,8 +268,9 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             
             # Step 2: Try Product Search using Rules
             if rules_data["has_data"]:
-                if ENABLE_SHOPIFY_INTEGRATION:
-                    search_query = f"{rules_data['color'] or ''} {rules_data['type'] or ''}".strip() or rules_data['category']
+                if inventory_source == "shopify" and ENABLE_SHOPIFY_INTEGRATION:
+                    color_str = " ".join(rules_data['colors'])
+                    search_query = f"{color_str} {rules_data['type'] or ''}".strip() or rules_data['category']
                     products = await fetch_clothing_inventory(
                         shop_url=s_url, access_token=s_token, api_version=s_ver,
                         query=search_query, 
@@ -280,6 +283,17 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                         featured_image = img_data.get("src") if img_data else None
                     
                     inventory_summary = format_products_for_ai(products, shop_url=s_url)
+                elif inventory_source == "manual":
+                    items = await search_tenant_inventory(
+                        tenant_id=tenant_id,
+                        category=rules_data['category'],
+                        colors=rules_data['colors'],
+                        limit=3
+                    )
+                    if items:
+                        featured_image = items[0].get("media", [None])[0]
+                    inventory_summary = format_manual_inventory_for_ai(items)
+
                 extraction = {"action": "inquiry", "item": rules_data['category'], "details": "Extracted via rules"}
             
             # Step 3: Fallback to AI Extraction if Rules yielded nothing
@@ -293,7 +307,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 )
                 item_query = extraction.get("item")
                 if item_query:
-                    if ENABLE_SHOPIFY_INTEGRATION:
+                    if inventory_source == "shopify" and ENABLE_SHOPIFY_INTEGRATION:
                         products = await fetch_clothing_inventory(
                             shop_url=s_url, access_token=s_token, api_version=s_ver, 
                             query=item_query
@@ -303,6 +317,15 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                             featured_image = img_data.get("src") if img_data else None
                             
                         inventory_summary = format_products_for_ai(products, shop_url=s_url)
+                    elif inventory_source == "manual":
+                        items = await search_tenant_inventory(
+                            tenant_id=tenant_id,
+                            query=item_query,
+                            limit=3
+                        )
+                        if items:
+                            featured_image = items[0].get("media", [None])[0]
+                        inventory_summary = format_manual_inventory_for_ai(items)
 
             reply = await generate_ai_response(
                 extraction,

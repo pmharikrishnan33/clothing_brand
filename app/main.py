@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Header
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.routes.usage import router as usage_router
+from app.api.routes.inventory import router as inventory_router
 from app.core.client_manager import get_client_config
 from app.core.database import init_db
 from app.core.config import VERIFY_TOKEN, APP_SECRET, clean_shopify_url
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
 app.include_router(usage_router)
+app.include_router(inventory_router)
 
 # Handle favicon requests to prevent 404 errors in production logs
 @app.get("/favicon.ico", include_in_schema=False)
