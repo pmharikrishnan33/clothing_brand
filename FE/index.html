@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zyphor Admin Dashboard</title>
+    <style>
+        :root {
+            --sidebar-bg: #0f172a;
+            --sidebar-hover: #1e293b;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f1f5f9;
+            --white: #ffffff;
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: var(--bg); color: var(--text-dark); }
+        
+        /* Sidebar */
+        .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; background: var(--sidebar-bg); color: white; transition: transform 0.3s ease; z-index: 100; }
+        .sidebar-header { padding: 24px; font-size: 24px; font-weight: bold; color: #60a5fa; border-bottom: 1px solid #1e293b; }
+        .nav { margin-top: 24px; }
+        .nav-item { display: flex; align-items: center; padding: 12px 24px; cursor: pointer; text-decoration: none; color: white; transition: 0.2s; }
+        .nav-item:hover { background: var(--sidebar-hover); }
+        .nav-item.active { background: var(--sidebar-hover); border-left: 4px solid var(--primary); }
+        .nav-item i { width: 24px; margin-right: 12px; }
+
+        /* Layout */
+        .main-content { margin-left: 260px; transition: 0.3s; min-height: 100vh; }
+        header { background: var(--white); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        main { padding: 24px; }
+
+        /* Components */
+        .card { background: var(--white); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 24px; margin-bottom: 24px; }
+        .btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; transition: 0.2s; display: inline-flex; align-items: center; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-dark { background: var(--sidebar-bg); color: white; width: 100%; justify-content: center; }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; background: var(--white); border-radius: 12px; overflow: hidden; }
+        th { background: #f8fafc; padding: 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-light); border-bottom: 1px solid var(--border); }
+        td { padding: 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .status-active { background: #d1fae5; color: #065f46; }
+        .status-inactive { background: #fee2e2; color: #991b1b; }
+
+        /* Forms */
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-size: 12px; font-weight: bold; color: var(--text-light); text-transform: uppercase; margin-bottom: 6px; }
+        input, select, textarea { width: 100%; padding: 10px; border: 2px solid var(--bg); border-radius: 8px; outline: none; transition: 0.2s; }
+        input:focus { border-color: var(--primary); }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; z-index: 200; backdrop-filter: blur(4px); }
+        .modal-content { background: var(--white); width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal-header { padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 24px; }
+
+        /* Grid */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .col-span-2 { grid-column: span 2; }
+
+        /* Utilities */
+        [x-cloak] { display: none !important; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .rule-card { border: 1px solid var(--border); padding: 16px; border-radius: 12px; background: #f8fafc; margin-bottom: 16px; position: relative; }
+        .remove-btn { color: var(--danger); background: none; border: none; cursor: pointer; position: absolute; top: 12px; right: 12px; }
+    </style>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body x-data="dashboard()">
+
+    <!-- Sidebar -->
+    <div class="sidebar" :style="sidebarOpen ? '' : 'transform: translateX(-100%)'">
+        <div class="sidebar-header">Zyphor Panel</div>
+        <nav class="nav">
+            <a @click="view = 'clients'; loadClients()" class="nav-item" :class="view === 'clients' ? 'active' : ''">
+                <i class="fas fa-users w-6"></i> <span>Clients</span>
+            </a>
+            <a @click="view = 'keywords'; loadClients()" class="nav-item" :class="view === 'keywords' ? 'active' : ''">
+                <i class="fas fa-key w-6"></i> <span>Keywords</span>
+            </a>
+            <a @click="view = 'usage'; loadClients()" class="nav-item" :class="view === 'usage' ? 'active' : ''">
+                <i class="fas fa-chart-line w-6"></i> <span>Usage Analytics</span>
+            </a>
+        </nav>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content" :style="sidebarOpen ? '' : 'margin-left: 0'">
+        <!-- Header -->
+        <header>
+            <button @click="sidebarOpen = !sidebarOpen" style="background:none; border:none; font-size: 20px; cursor:pointer;"><i class="fas fa-bars"></i></button>
+            <h2 x-text="view.charAt(0).toUpperCase() + view.slice(1)"></h2>
+            <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-light)">
+                <span style="width:10px; height:10px; border-radius:50%; background:var(--success)"></span> API ONLINE
+            </div>
+        </header>
+
+        <main>
+            <!-- Client View -->
+            <template x-if="view === 'clients'">
+                <div>
+                    <div class="flex-between">
+                        <h3 style="margin:0">Client Configurations</h3>
+                        <button @click="openClientModal()" class="btn btn-primary"><i class="fas fa-plus" style="margin-right:8px"></i> Add Client</button>
+                    </div>
+                    <table class="card">
+                        <thead>
+                            <tr>
+                                <th>Tenant ID</th>
+                                <th>Phone ID</th>
+                                <th>Inventory</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="client in clients" :key="client.tenant_id">
+                                <tr>
+                                    <td style="font-weight:600" x-text="client.tenant_id"></td>
+                                    <td x-text="client.phone_number_id"></td>
+                                    <td><span class="status-badge" style="background:#e0e7ff; color:#3730a3" x-text="client.inventory_source"></span></td>
+                                    <td>
+                                        <span class="status-badge" :class="client.is_active !== false ? 'status-active' : 'status-inactive'" x-text="client.is_active !== false ? 'Active' : 'Inactive'"></span>
+                                    </td>
+                                    <td><button @click="openClientModal(client)" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold">Edit</button></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+
+            <!-- Keywords View -->
+            <template x-if="view === 'keywords'">
+                <div>
+                    <div class="card" style="display:flex; align-items:center; gap:16px; margin-bottom:16px">
+                        <label style="margin:0">Select Client:</label>
+                        <select x-model="selectedTenant" @change="loadKeywords()" style="flex:1">
+                            <option value="">-- Choose --</option>
+                            <template x-for="c in clients" :key="c.tenant_id">
+                                <option :value="c.tenant_id" x-text="c.tenant_id"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <template x-if="selectedTenant">
+                        <div class="space-y-4">
+                            <div class="flex-between">
+                                <h3 style="margin:0">Rules for <span style="color:var(--primary)" x-text="selectedTenant"></span></h3>
+                                <button @click="addRule()" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold">+ New Rule</button>
+                            </div>
+                            <template x-for="(rule, index) in keywordData.rules" :key="index">
+                                <div class="rule-card">
+                                    <button @click="removeRule(index)" class="remove-btn"><i class="fas fa-trash"></i></button>
+                                    <div class="grid-2">
+                                        <div>
+                                            <label>Triggers</label>
+                                            <input type="text" :value="rule.keywords.join(', ')" @input="rule.keywords = $event.target.value.split(',').map(s => s.trim())">
+                                        </div>
+                                        <div>
+                                            <label>Match Type</label>
+                                            <select x-model="rule.match_type">
+                                                <option value="contains">Contains</option>
+                                                <option value="exact">Exact</option>
+                                                <option value="startswith">Starts With</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-span-2">
+                                            <label>Responses (one per line)</label>
+                                            <textarea rows="3" :value="rule.responses ? rule.responses.join('\n') : (rule.response || '')" @input="rule.responses = $event.target.value.split('\n').filter(s => s.trim())"></textarea>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top:12px; display:flex; align-items:center; gap:8px">
+                                        <input type="checkbox" x-model="rule.is_active" style="width:auto">
+                                        <span style="font-size:14px">Active</span>
+                                    </div>
+                                </div>
+                            </template>
+                            <button @click="saveKeywords()" class="btn btn-dark" style="margin-top:16px">Apply Rules</button>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Usage View -->
+            <template x-if="view === 'usage'">
+                <div>
+                    <div class="card" style="display:flex; align-items:center; gap:16px; margin-bottom:16px">
+                        <label style="margin:0">Select Client:</label>
+                        <select x-model="selectedTenant" @change="loadUsage()" style="flex:1">
+                            <option value="">-- Choose --</option>
+                            <template x-for="c in clients" :key="c.tenant_id">
+                                <option :value="c.tenant_id" x-text="c.tenant_id"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <template x-if="usageData">
+                        <div class="grid-2" style="grid-template-columns: repeat(3, 1fr)">
+                            <div class="card" style="text-align:center">
+                                <div style="font-size:12px; font-weight:bold; color:var(--text-light)">Total Cost</div>
+                                <div style="font-size:32px; font-weight:bold" x-text="usageData.currency + ' ' + usageData.total_combined_cost"></div>
+                            </div>
+                            <div class="card" style="text-align:center">
+                                <div style="font-size:12px; font-weight:bold; color:var(--text-light)">AI Ops</div>
+                                <div style="font-size:32px; font-weight:bold; color:var(--primary)" x-text="usageData.ai_model_usage.by_model.reduce((a,b) => a + b.total_requests, 0)"></div>
+                            </div>
+                            <div class="card" style="text-align:center">
+                                <div style="font-size:12px; font-weight:bold; color:var(--text-light)">Active Sessions</div>
+                                <div style="font-size:32px; font-weight:bold; color:var(--success)" x-text="usageData.meta_conversations.by_category.reduce((a,b) => a + b.total_conversations, 0)"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </main>
+    </div>
+
+    <!-- Client Modal -->
+    <div x-show="modalOpen" class="modal-overlay" x-cloak>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0" x-text="editClient.tenant_id ? 'Config: ' + editClient.tenant_id : 'Add Client'"></h3>
+                <button @click="modalOpen = false" style="background:none; border:none; cursor:pointer; font-size:20px"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="grid-2">
+                    <div class="col-span-2">
+                        <label>Tenant ID</label>
+                        <input type="text" x-model="editClient.tenant_id" placeholder="e.g. fashion_brand">
+                    </div>
+                    <div>
+                        <label>Phone ID</label>
+                        <input type="text" x-model="editClient.phone_number_id">
+                    </div>
+                    <div>
+                        <label>Inventory Source</label>
+                        <select x-model="editClient.inventory_source">
+                            <option value="manual">Manual</option>
+                            <option value="shopify">Shopify</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top:24px; padding:16px; background:#f5f3ff; border-radius:12px">
+                    <h4 style="margin:0 0 12px 0; color:#4c1d95"><i class="fab fa-shopify"></i> Shopify Sync</h4>
+                    <label>Store URL</label>
+                    <input type="text" x-model="editClient.shopify_url" style="margin-bottom:12px">
+                    <label>Access Token</label>
+                    <input type="password" x-model="editClient.shopify_access_token">
+                </div>
+                <div style="margin-top:24px">
+                    <label>AI Stylist Persona</label>
+                    <textarea x-model="editClient.ai_system_prompt" rows="3"></textarea>
+                </div>
+                <div style="margin-top:24px; display:flex; align-items:center; gap:8px">
+                    <input type="checkbox" x-model="editClient.is_active" style="width:auto">
+                    <span style="font-weight:bold">Active</span>
+                </div>
+                <div style="margin-top:32px; display:flex; gap:12px">
+                    <button @click="modalOpen = false" class="btn" style="background:#e2e8f0; flex:1">Cancel</button>
+                    <button @click="saveClient()" class="btn btn-primary" style="flex:1; justify-content:center">Save Client</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                sidebarOpen: true,
+                view: 'clients',
+                clients: [],
+                selectedTenant: '',
+                // Automatically point to backend if using Live Server (port 5500)
+                apiBase: window.location.port === '5500' ? 'http://localhost:8000' : '',
+                keywordData: { rules: [] },
+                usageData: null,
+                modalOpen: false,
+                editClient: {},
+
+                init() {
+                    this.loadClients();
+                },
+
+                async loadClients() {
+                    try {
+                        const res = await fetch(`${this.apiBase}/api/admin/clients`);
+                        const data = await res.json();
+                        console.log("Successfully loaded clients:", data);
+                        this.clients = data;
+                    } catch (err) {
+                        console.error("Failed to fetch clients from API:", err);
+                    }
+                },
+
+                openClientModal(client = null) {
+                    this.editClient = client ? JSON.parse(JSON.stringify(client)) : {
+                        tenant_id: '',
+                        phone_number_id: '',
+                        inventory_source: 'manual',
+                        is_active: true,
+                        shopify_api_version: '2024-01',
+                        ai_system_prompt: 'You are an AI Stylist assistant.'
+                    };
+                    this.modalOpen = true;
+                },
+
+                async saveClient() {
+                    const res = await fetch(`${this.apiBase}/api/admin/clients`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.editClient)
+                    });
+                    if (res.ok) {
+                        this.modalOpen = false;
+                        this.loadClients();
+                    }
+                },
+
+                async loadKeywords() {
+                    if (!this.selectedTenant) return;
+                    const res = await fetch(`${this.apiBase}/api/admin/keywords/${this.selectedTenant}`);
+                    this.keywordData = await res.json();
+                    if (!this.keywordData.rules) this.keywordData.rules = [];
+                },
+
+                addRule() {
+                    this.keywordData.rules.unshift({
+                        keywords: ['new_trigger'],
+                        match_type: 'contains',
+                        responses: ['Type response here'],
+                        is_active: true
+                    });
+                },
+
+                removeRule(index) {
+                    this.keywordData.rules.splice(index, 1);
+                },
+
+                async saveKeywords() {
+                    const res = await fetch(`${this.apiBase}/api/admin/keywords/${this.selectedTenant}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.keywordData)
+                    });
+                    if (res.ok) alert('Successfully updated AI rules for ' + this.selectedTenant);
+                },
+
+                async loadUsage() {
+                    if (!this.selectedTenant) return;
+                    const res = await fetch(`${this.apiBase}/api/usage/summary?tenant_id=${this.selectedTenant}`);
+                    this.usageData = await res.json();
+                }
+            }
+        }
+    </script>
+</body>
+</html>

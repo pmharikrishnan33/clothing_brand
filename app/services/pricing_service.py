@@ -119,65 +119,36 @@ async def record_ai_model_usage(
     db = get_db()
     now = _now()
 
-    if interaction_id:
-        # UPSERT: If it exists, add the new tokens/cost to the existing ones.
-        update_data = {
+    # Consolidation: maintain a single cumulative document per tenant_id
+    await db.ai_model_usage.update_one(
+        {"tenant_id": tenant_id},
+        {
             "$setOnInsert": {
-                "tenant_id": tenant_id,
-                "interaction_id": interaction_id,
+                "created_at": now,
+            },
+            "$set": {
                 **identity,
                 "provider": provider,
                 "model": model,
                 "input_price_per_million": pricing["input_per_million"],
                 "output_price_per_million": pricing["output_per_million"],
                 "currency": currency,
-                "pricing_snapshot": {
-                    "input_price_per_million": pricing["input_per_million"],
-                    "output_price_per_million": pricing["output_per_million"],
-                    "currency": currency,
-                },
-                "created_at": now,
+                "updated_at": now
             },
-            "$inc": {  # <--- Automatically adds new tokens/cost to the current total
+            "$inc": {
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
                 "total_cost": total_cost,
+                "total_requests": 1
             },
-            "$addToSet": { # <--- Keeps a list of all operations done (e.g. ["extract_info", "generate_response"])
+            "$addToSet": {
                 "operations": operation
             }
-        }
-        await db.ai_model_usage.update_one(
-            {"tenant_id": tenant_id, "interaction_id": interaction_id, "model": model}, 
-            update_data, 
-            upsert=True
-        )
-        return {"status": "updated", "interaction_id": interaction_id}
-    else:
-        # Fallback if no interaction_id is passed
-        document = {
-            "tenant_id": tenant_id,
-            **identity,
-            "provider": provider,
-            "model": model,
-            "operations": [operation],
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "input_price_per_million": pricing["input_per_million"],
-            "output_price_per_million": pricing["output_per_million"],
-            "total_cost": total_cost,
-            "currency": currency,
-            "pricing_snapshot": {
-                "input_price_per_million": pricing["input_per_million"],
-                "output_price_per_million": pricing["output_per_million"],
-                "currency": currency,
-            },
-            "created_at": now,
-        }
-        await db.ai_model_usage.insert_one(document)
-        return document
+        },
+        upsert=True
+    )
+    return {"status": "success", "tenant_id": tenant_id}
 
 
 async def record_meta_conversation_usage(
@@ -265,7 +236,7 @@ async def usage_summary(tenant_id: str, start_at: Optional[datetime] = None, end
                 {
                     "$group": {
                         "_id": {"provider": "$provider", "model": "$model", "currency": {"$ifNull": ["$currency", DEFAULT_CURRENCY]}},
-                        "requests": {"$sum": 1},
+                        "requests": {"$sum": {"$ifNull": ["$total_requests", 1]}},
                         "prompt_tokens": {"$sum": "$prompt_tokens"},
                         "completion_tokens": {"$sum": "$completion_tokens"},
                         "total_tokens": {"$sum": "$total_tokens"},

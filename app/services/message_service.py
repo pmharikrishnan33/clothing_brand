@@ -110,7 +110,7 @@ async def save_learned_combination(
         upsert=True
     )
 
-    learned.append(document)
+    learned.append(new_entry)
 
     if filepath:
         save_learned_keywords(filepath, learned)

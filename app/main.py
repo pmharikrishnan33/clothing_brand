@@ -7,8 +7,10 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from app.core.database import get_db
 from app.api.routes.usage import router as usage_router
 from app.api.routes.inventory import router as inventory_router
 from app.core.client_manager import get_client_config
@@ -28,8 +30,63 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows requests from port 5500 to port 8000
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(usage_router)
 app.include_router(inventory_router)
+
+# --- ADMIN DASHBOARD API ---
+
+@app.get("/api/admin/clients")
+async def list_clients():
+    db = get_db()
+    clients = await db.clients.find({}).to_list(length=100)
+    logger.info(f"Dashboard requested clients. Found {len(clients)} documents in 'clients' collection.")
+    
+    for c in clients:
+        c["_id"] = str(c["_id"])
+        # Ensure tenant_id is never null for the UI table
+        if "tenant_id" not in c:
+            c["tenant_id"] = "Unnamed Client"
+    return clients
+
+@app.post("/api/admin/clients")
+async def upsert_client(client_data: dict):
+    db = get_db()
+    tenant_id = client_data.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id required")
+    client_data.pop("_id", None)
+    await db.clients.update_one({"tenant_id": tenant_id}, {"$set": client_data}, upsert=True)
+    return {"status": "success"}
+
+@app.get("/api/admin/keywords/{tenant_id}")
+async def get_keywords(tenant_id: str):
+    db = get_db()
+    doc = await db.keywords.find_one({"tenant_id": tenant_id})
+    return doc or {"tenant_id": tenant_id, "rules": []}
+
+@app.post("/api/admin/keywords/{tenant_id}")
+async def update_keywords(tenant_id: str, data: dict):
+    db = get_db()
+    rules = data.get("rules", [])
+    await db.keywords.update_one({"tenant_id": tenant_id}, {"$set": {"rules": rules}}, upsert=True)
+    return {"status": "success"}
+
+# --- MOUNT DASHBOARD FROM ROOT FE FOLDER ---
+
+base_dir = Path(__file__).resolve().parent.parent
+fe_dir = base_dir / "FE"
+
+if fe_dir.exists():
+    app.mount("/dashboard", StaticFiles(directory=str(fe_dir), html=True), name="dashboard")
 
 # Handle favicon requests to prevent 404 errors in production logs
 @app.get("/favicon.ico", include_in_schema=False)
