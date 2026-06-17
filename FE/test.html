@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zyphor Master Admin</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+        :root {
+            --primary: #2563eb;
+            --sidebar-bg: #0f172a;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+        [x-cloak] { display: none !important; }
+        body { font-family: 'Inter', sans-serif; margin: 0; background: var(--bg); color: var(--text); overflow-x: hidden; }
+        .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 240px; background: var(--sidebar-bg); color: white; padding: 24px 0; }
+        .nav-item { padding: 12px 24px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.2s; }
+        .nav-item:hover { background: #1e293b; }
+        .nav-item.active { border-left: 4px solid var(--primary); background: #1e293b; }
+        .main { margin-left: 240px; padding: 32px; min-height: 100vh; }
+        .card { background: white; border-radius: 12px; border: 1px solid var(--border); padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); font-size: 12px; text-transform: uppercase; color: #64748b; }
+        td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+        .btn { padding: 8px 16px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600; font-size: 14px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-danger { background: #ef4444; color: white; }
+        input, select, textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; font-family: inherit; }
+        .field-group { margin-bottom: 16px; }
+        label { font-size: 12px; font-weight: 700; color: #64748b; }
+
+        /* Modal Styles */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+        .modal-content { background: white; width: 650px; max-width: 95vw; max-height: 90vh; overflow-y: auto; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+    </style>
+</head>
+<body x-data="masterAdmin()">
+
+    <div class="sidebar">
+        <div style="padding: 0 24px 24px; font-weight: 800; font-size: 20px; color: var(--primary)">ZYPHOR DB</div>
+        <nav>
+            <div @click="view = 'clients'; refreshData()" class="nav-item" :class="view === 'clients' && 'active'"><i class="fas fa-building"></i> Clients</div>
+            <div @click="view = 'inventory'; refreshData()" class="nav-item" :class="view === 'inventory' && 'active'"><i class="fas fa-boxes"></i> Inventory</div>
+            <div @click="view = 'rules'; refreshData()" class="nav-item" :class="view === 'rules' && 'active'"><i class="fas fa-robot"></i> AI Rules</div>
+            <div @click="view = 'learned'; refreshData()" class="nav-item" :class="view === 'learned' && 'active'"><i class="fas fa-brain"></i> Learned</div>
+            <div @click="view = 'messages'; refreshData()" class="nav-item" :class="view === 'messages' && 'active'"><i class="fas fa-comments"></i> Message Logs</div>
+        </nav>
+    </div>
+
+    <div class="main">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h1 x-text="view.charAt(0).toUpperCase() + view.slice(1)"></h1>
+            <div x-show="view !== 'clients'">
+                <select x-model="selectedTenant" @change="refreshData()" style="width: 200px;">
+                    <option value="">Select Tenant...</option>
+                    <template x-for="c in clients" :key="c.tenant_id">
+                        <option :value="c.tenant_id" x-text="c.tenant_id"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+
+        <!-- CLIENTS VIEW -->
+        <template x-if="view === 'clients'">
+            <div>
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="margin:0">Manage Clients</h3>
+                        <button @click="openClientModal()" class="btn btn-primary">+ Add Client</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr><th>Tenant ID</th><th>Phone ID</th><th>Source</th><th>Status</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="c in clients">
+                                <tr>
+                                    <td x-text="c.tenant_id"></td>
+                                    <td x-text="c.phone_number_id"></td>
+                                    <td x-text="c.inventory_source"></td>
+                                    <td x-text="c.is_active ? 'Active' : 'Offline'"></td>
+                                    <td style="display: flex; gap: 8px;">
+                                        <button @click="openClientModal(c)" class="btn btn-primary btn-sm" style="background: #64748b">Edit</button>
+                                        <button @click="deleteClient(c.tenant_id)" class="btn btn-danger btn-sm">Delete</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+
+        <!-- INVENTORY VIEW -->
+        <template x-if="view === 'inventory'">
+            <div>
+                <div class="card" x-show="selectedTenant">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="margin:0">Inventory (Dresses)</h3>
+                        <button @click="addInventoryItem()" class="btn btn-primary">+ Add Item</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Title</th><th>Category</th><th>Colors</th><th>Sizes</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            <template x-for="item in inventory">
+                                <tr>
+                                    <td x-text="item.title"></td>
+                                    <td x-text="item.category"></td>
+                                    <td x-text="item.color ? item.color.join(', ') : ''"></td>
+                                    <td x-text="item.size ? item.size.join(', ') : ''"></td>
+                                    <td style="display: flex; gap: 8px;">
+                                        <button @click="editInventoryItem(item)" class="btn btn-primary btn-sm" style="background: #64748b">Edit</button>
+                                        <button @click="deleteItem(item._id)" class="btn btn-danger btn-sm">Delete</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+
+        <!-- AI RULES VIEW -->
+        <template x-if="view === 'rules'">
+            <div x-show="selectedTenant">
+                <div class="card">
+                    <h3>Keyword Response Rules</h3>
+                    <template x-for="(rule, idx) in rules">
+                        <div class="card" style="background: #f1f5f9;">
+                            <div class="field-group">
+                                <label>Triggers (Comma separated)</label>
+                                <input type="text" :value="rule.keywords.join(', ')" @input="rule.keywords = $event.target.value.split(',').map(s=>s.trim())">
+                            </div>
+                            <div class="field-group">
+                                <label>Response</label>
+                                <textarea x-model="rule.responses[0]"></textarea>
+                            </div>
+                            <button @click="rules.splice(idx,1)" class="btn btn-danger">Remove Rule</button>
+                        </div>
+                    </template>
+                    <button @click="rules.push({keywords:['new'], responses:['Hello'], is_active:true})" class="btn btn-primary">Add Rule</button>
+                    <button @click="saveRules()" class="btn btn-primary" style="background: #10b981">Save All Rules</button>
+                </div>
+            </div>
+        </template>
+
+        <!-- LEARNED VIEW -->
+        <template x-if="view === 'learned'">
+            <div x-show="selectedTenant">
+                <div class="card">
+                    <h3>AI Learned Patterns</h3>
+                    <template x-for="(l, idx) in learned">
+                        <div style="padding: 12px; border: 1px solid var(--border); margin-bottom: 8px; border-radius: 8px;">
+                            <div style="font-weight: bold" x-text="'[' + l.keywords.join(' + ') + ']'"></div>
+                            <input type="text" x-model="l.response" style="margin: 8px 0">
+                            <button @click="learned.splice(idx,1)" class="btn btn-danger btn-sm">Delete</button>
+                        </div>
+                    </template>
+                    <button @click="saveLearned()" class="btn btn-primary" style="margin-top: 12px">Update Learned Base</button>
+                </div>
+            </div>
+        </template>
+
+        <!-- LOGS VIEW -->
+        <template x-if="view === 'messages'">
+            <div x-show="selectedTenant">
+                <div class="card">
+                    <h3>Recent Logs (Last 50)</h3>
+                    <template x-for="m in messages">
+                        <div :style="m.direction === 'inbound' ? 'text-align: left; margin-bottom: 12px' : 'text-align: right; margin-bottom: 12px'">
+                            <div :style="m.direction === 'inbound' ? 'background: #e2e8f0; display: inline-block; padding: 12px; border-radius: 12px' : 'background: #dcfce7; display: inline-block; padding: 12px; border-radius: 12px'">
+                                <div style="font-size: 10px; color: #64748b" x-text="m.customer_phone"></div>
+                                <div x-text="m.body"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- CLIENT MODAL -->
+    <div x-show="modalOpen" class="modal-overlay" x-cloak>
+        <div class="modal-content" @click.away="modalOpen = false">
+            <h2 x-text="editClient._id ? 'Edit Client: ' + editClient.tenant_id : 'Add New Client'"></h2>
+            <div class="field-group">
+                <label>Tenant ID (Unique Name)</label>
+                <input type="text" x-model="editClient.tenant_id" :disabled="!!editClient._id">
+            </div>
+            <div class="field-group">
+                <label>WhatsApp Phone Number ID</label>
+                <input type="text" x-model="editClient.phone_number_id">
+            </div>
+            <div class="field-group">
+                <label>WhatsApp Access Token</label>
+                <input type="password" x-model="editClient.whatsapp_token">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field-group">
+                    <label>Inventory Source</label>
+                    <select x-model="editClient.inventory_source">
+                        <option value="manual">Manual (Zyphor DB)</option>
+                        <option value="shopify">Shopify API</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Bot Status</label>
+                    <select x-model="editClient.is_active">
+                        <option :value="true">Active</option>
+                        <option :value="false">Disabled</option>
+                    </select>
+                </div>
+            </div>
+            <div x-show="editClient.inventory_source === 'shopify'" style="background: #f8fafc; border: 1px solid var(--border); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <h4 style="margin: 0 0 12px 0">Shopify Integration</h4>
+                <label>Store URL</label>
+                <input type="text" x-model="editClient.shopify_url" placeholder="your-store.myshopify.com">
+                <label style="margin-top: 12px; display: block;">Admin Access Token</label>
+                <input type="password" x-model="editClient.shopify_access_token">
+            </div>
+            <div class="field-group">
+                <label>AI Stylist Persona (System Prompt)</label>
+                <textarea rows="4" x-model="editClient.ai_system_prompt"></textarea>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 24px;">
+                <button @click="saveClient()" class="btn btn-primary" style="flex:1">Save Configuration</button>
+                <button @click="modalOpen = false" class="btn" style="background: #e2e8f0;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- INVENTORY MODAL -->
+    <div x-show="itemModalOpen" class="modal-overlay" x-cloak>
+        <div class="modal-content">
+            <h2 x-text="newItem._id ? 'Edit Dress / Item' : 'Add New Dress / Item'"></h2>
+            <div class="field-group">
+                <label>Product Title</label>
+                <input type="text" x-model="newItem.title" placeholder="e.g. Blue Summer Dress">
+            </div>
+            <div class="field-group">
+                <label>Description</label>
+                <textarea rows="3" x-model="newItem.description"></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field-group">
+                    <label>Category</label>
+                    <input type="text" x-model="newItem.category" placeholder="Clothing">
+                </div>
+                <div class="field-group">
+                    <label>Colors (Comma separated)</label>
+                    <input type="text" placeholder="Blue, Black" :value="newItem.color ? newItem.color.join(', ') : ''" @input="newItem.color = $event.target.value.split(',').map(s=>s.trim())">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="field-group">
+                    <label>Sizes (Comma separated)</label>
+                    <input type="text" placeholder="S, M, L" :value="newItem.size ? newItem.size.join(', ') : ''" @input="newItem.size = $event.target.value.split(',').map(s=>s.trim())">
+                </div>
+                <div class="field-group">
+                    <label>Media/Image URL</label>
+                    <input type="text" x-model="newItem.media[0]" placeholder="https://image.url">
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 24px;">
+                <button @click="saveInventoryItem()" class="btn btn-primary" style="flex:1">Save Item</button>
+                <button @click="itemModalOpen = false" class="btn" style="background: #e2e8f0;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function masterAdmin() {
+            return {
+                view: 'clients',
+                selectedTenant: '',
+                clients: [],
+                inventory: [],
+                rules: [],
+                learned: [],
+                messages: [],
+                modalOpen: false,
+                itemModalOpen: false,
+                newItem: { title: '', description: '', category: 'Clothing', color: [], size: [], media: [] },
+                editClient: {},
+                // Improved API base detection
+                get apiBase() {
+                    // If running on port 5500 (Live Server), redirect API calls to port 8000
+                    if (window.location.port === '5500') {
+                        return `${window.location.protocol}//${window.location.hostname}:8000`;
+                    }
+                    return '';
+                },
+
+                async init() {
+                    await this.loadClients();
+                },
+
+                async loadClients() {
+                    try {
+                        const res = await fetch(`${this.apiBase}/api/admin/clients`, { cache: 'no-store' });
+                        if (!res.ok) throw new Error('Failed to fetch');
+                        this.clients = await res.json();
+                        console.log("✅ Successfully loaded clients:", this.clients);
+                    } catch (err) {
+                        console.error("❌ API Connection Error. Check if backend is running on port 8000.", err);
+                    }
+                },
+
+                openClientModal(client = null) {
+                    this.editClient = client ? JSON.parse(JSON.stringify(client)) : {
+                        _id: null, // Explicitly set to null for new clients
+                        tenant_id: '',
+                        phone_number_id: '',
+                        whatsapp_token: '',
+                        inventory_source: 'manual',
+                        is_active: true,
+                        ai_system_prompt: 'You are an AI Stylist assistant helping customers find clothes.'
+                    };
+                    this.modalOpen = true;
+                },
+
+                async saveClient() {
+                    if (!this.editClient.tenant_id) return alert('Tenant ID is required');
+                    const res = await fetch(`${this.apiBase}/api/admin/clients`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(this.editClient)
+                    });
+                    if (res.ok) {
+                        this.modalOpen = false;
+                        await this.loadClients();
+                    } else {
+                        alert('Error saving client');
+                    }
+                },
+
+                async refreshData() {
+                    // If we are on the clients view, refresh the client list regardless of selection
+                    if (this.view === 'clients') {
+                        await this.loadClients();
+                        return;
+                    }
+
+                    if (!this.selectedTenant) return;
+                    
+                    if (this.view === 'inventory') await this.loadInventory();
+                    if (this.view === 'rules') await this.loadRules();
+                    if (this.view === 'learned') await this.loadLearned();
+                    if (this.view === 'messages') await this.loadMessages();
+                },
+
+                async loadInventory() {
+                    const res = await fetch(`${this.apiBase}/api/admin/inventory/${this.selectedTenant}`);
+                    const data = await res.json();
+                    this.inventory = data.items;
+                },
+
+                async loadRules() {
+                    const res = await fetch(`${this.apiBase}/api/admin/keywords/${this.selectedTenant}`);
+                    const data = await res.json();
+                    this.rules = data.rules || [];
+                },
+
+                async loadLearned() {
+                    const res = await fetch(`${this.apiBase}/api/admin/learned/${this.selectedTenant}`);
+                    const data = await res.json();
+                    this.learned = data.learned || [];
+                },
+
+                async loadMessages() {
+                    const res = await fetch(`${this.apiBase}/api/admin/messages/${this.selectedTenant}`);
+                    this.messages = await res.json();
+                },
+
+                async deleteClient(tid) {
+                    if (confirm(`Delete ${tid}?`)) {
+                        await fetch(`${this.apiBase}/api/admin/clients/${tid}`, { method: 'DELETE' });
+                        await this.loadClients();
+                    }
+                },
+
+                async saveRules() {
+                    await fetch(`${this.apiBase}/api/admin/keywords/${this.selectedTenant}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ rules: this.rules })
+                    });
+                    alert('Rules updated');
+                },
+
+                async saveLearned() {
+                    await fetch(`${this.apiBase}/api/admin/learned/${this.selectedTenant}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ learned: this.learned })
+                    });
+                    alert('Patterns updated');
+                },
+
+                async deleteItem(id) {
+                    await fetch(`${this.apiBase}/api/admin/inventory/${this.selectedTenant}/${id}`, { method: 'DELETE' });
+                    await this.loadInventory();
+                },
+
+                async addInventoryItem() {
+                    this.newItem = { title: '', description: '', category: 'Clothing', color: [], size: [], media: [] };
+                    this.itemModalOpen = true;
+                },
+
+                editInventoryItem(item) {
+                    this.newItem = JSON.parse(JSON.stringify(item));
+                    this.itemModalOpen = true;
+                },
+
+                async saveInventoryItem() {
+                    if (!this.newItem.title) return alert('Title required');
+                    
+                    const method = this.newItem._id ? 'PATCH' : 'POST';
+                    const url = this.newItem._id 
+                        ? `${this.apiBase}/api/admin/inventory/${this.selectedTenant}/${this.newItem._id}`
+                        : `${this.apiBase}/inventory/${this.selectedTenant}/items`;
+
+                    await fetch(url, {
+                        method: method,
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(this.newItem)
+                    });
+                    
+                    this.itemModalOpen = false;
+                    await this.loadInventory();
+                }
+            }
+        }
+    </script>
+</body>
+</html>

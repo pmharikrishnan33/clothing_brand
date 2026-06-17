@@ -8,14 +8,14 @@ from app.core.config import http_client, clean_shopify_url
 
 
 from app.core.database import get_db
-from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai
+from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai, format_single_item_for_whatsapp
 from app.services.ai_service import (
     ai_extract_info,
     ai_fallback_response,
     generate_ai_response,
 )
 from app.services.pricing_service import record_meta_conversation_usage
-from app.services.shopify_service import extract_rules_info, fetch_clothing_inventory, format_products_for_ai
+from app.services.shopify_service import extract_rules_info, fetch_clothing_inventory, format_products_for_ai, format_single_product_for_whatsapp
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +232,7 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
     tenant_id = str(client.get("tenant_id") or client.get("_id") or phone_id)
     channel_id = str(client.get("_id") or phone_id)
     incoming_text = (text_data or "").strip()
-    featured_image = None
+    items_to_send = []
 
     interaction_id = str(uuid.uuid4())
 
@@ -289,9 +289,12 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                         max_price=rules_data['max_price']
                     )
                     if products:
-                        # Extract image URL from the first product
-                        img_data = products[0].get("image") or (products[0].get("images", [{}])[0] if products[0].get("images") else None)
-                        featured_image = img_data.get("src") if img_data else None
+                        for p in products[:3]:
+                            img_data = p.get("image") or (p.get("images", [{}])[0] if p.get("images") else None)
+                            items_to_send.append({
+                                "text": format_single_product_for_whatsapp(p, shop_url=s_url),
+                                "image": img_data.get("src") if img_data else None
+                            })
                     
                     inventory_summary = format_products_for_ai(products, shop_url=s_url)
                 elif inventory_source == "manual":
@@ -302,7 +305,11 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                         limit=3
                     )
                     if items:
-                        featured_image = items[0].get("media", [None])[0]
+                        for item in items[:3]:
+                            items_to_send.append({
+                                "text": format_single_item_for_whatsapp(item),
+                                "image": item.get("media", [None])[0]
+                            })
                     inventory_summary = format_manual_inventory_for_ai(items)
 
                 extraction = {"action": "inquiry", "item": rules_data['category'], "details": "Extracted via rules"}
@@ -324,8 +331,12 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                             query=item_query
                         )
                         if products:
-                            img_data = products[0].get("image") or (products[0].get("images", [{}])[0] if products[0].get("images") else None)
-                            featured_image = img_data.get("src") if img_data else None
+                            for p in products[:3]:
+                                img_data = p.get("image") or (p.get("images", [{}])[0] if p.get("images") else None)
+                                items_to_send.append({
+                                    "text": format_single_product_for_whatsapp(p, shop_url=s_url),
+                                    "image": img_data.get("src") if img_data else None
+                                })
                             
                         inventory_summary = format_products_for_ai(products, shop_url=s_url)
                     elif inventory_source == "manual":
@@ -335,7 +346,11 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                             limit=3
                         )
                         if items:
-                            featured_image = items[0].get("media", [None])[0]
+                            for item in items[:3]:
+                                items_to_send.append({
+                                    "text": format_single_item_for_whatsapp(item),
+                                    "image": item.get("media", [None])[0]
+                                })
                         inventory_summary = format_manual_inventory_for_ai(items)
 
             reply = await generate_ai_response(
@@ -347,10 +362,6 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                 interaction_id=interaction_id,
                 inventory=inventory_summary,
             )
-            
-            # Append catalogue details to the AI greeting if products were found
-            if inventory_summary and "matching items" not in inventory_summary.lower():
-                reply = f"{reply}\n\n{inventory_summary}"
 
         elif ENABLE_AI_FALLBACK:
             reply = await ai_fallback_response(
@@ -372,7 +383,13 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             "reason": "missing_whatsapp_token",
         }
 
-    send_result = await send_whatsapp_message(phone_id, access_token, from_phone, reply, image_url=featured_image)
+    # Send primary text greeting
+    send_result = await send_whatsapp_message(phone_id, access_token, from_phone, reply)
+    
+    # Send product cards as separate image messages
+    for item_data in items_to_send:
+        await send_whatsapp_message(phone_id, access_token, from_phone, item_data["text"], image_url=item_data["image"])
+
     if send_result.get("status") == "error":
         return {
             "status": "error",

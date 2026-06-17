@@ -3,6 +3,7 @@ import hmac
 import json
 import logging
 from pathlib import Path
+from bson import ObjectId
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -67,6 +68,13 @@ async def upsert_client(client_data: dict):
     await db.clients.update_one({"tenant_id": tenant_id}, {"$set": client_data}, upsert=True)
     return {"status": "success"}
 
+@app.delete("/api/admin/clients/{tenant_id}")
+async def delete_client(tenant_id: str):
+    db = get_db()
+    await db.clients.delete_one({"tenant_id": tenant_id})
+    await db.keywords.delete_one({"tenant_id": tenant_id})
+    return {"status": "deleted"}
+
 @app.get("/api/admin/keywords/{tenant_id}")
 async def get_keywords(tenant_id: str):
     db = get_db()
@@ -79,6 +87,58 @@ async def update_keywords(tenant_id: str, data: dict):
     rules = data.get("rules", [])
     await db.keywords.update_one({"tenant_id": tenant_id}, {"$set": {"rules": rules}}, upsert=True)
     return {"status": "success"}
+
+@app.get("/api/admin/learned/{tenant_id}")
+async def get_learned(tenant_id: str):
+    db = get_db()
+    doc = await db.learned_keywords.find_one({"tenant_id": tenant_id})
+    return doc or {"tenant_id": tenant_id, "learned": []}
+
+@app.post("/api/admin/learned/{tenant_id}")
+async def update_learned(tenant_id: str, data: dict):
+    db = get_db()
+    learned = data.get("learned", [])
+    await db.learned_keywords.update_one({"tenant_id": tenant_id}, {"$set": {"learned": learned}}, upsert=True)
+    return {"status": "success"}
+
+@app.get("/api/admin/messages/{tenant_id}")
+async def get_messages(tenant_id: str, limit: int = 50):
+    db = get_db()
+    msgs = await db.messages.find({"tenant_id": tenant_id}).sort("_id", -1).to_list(length=limit)
+    for m in msgs:
+        m["_id"] = str(m["_id"])
+    return msgs
+
+@app.get("/api/admin/inventory/{tenant_id}")
+async def admin_get_inventory(tenant_id: str):
+    db = get_db()
+    items = await db[f"inventory.{tenant_id}"].find().sort("_id", -1).to_list(length=100)
+    for item in items:
+        item["_id"] = str(item["_id"])
+    return {"items": items}
+
+@app.patch("/api/admin/inventory/{tenant_id}/{item_id}")
+async def update_inventory_item(tenant_id: str, item_id: str, item_data: dict):
+    db = get_db()
+    item_data.pop("_id", None)
+    item_data.pop("tenant_id", None)
+    try:
+        await db[f"inventory.{tenant_id}"].update_one(
+            {"_id": ObjectId(item_id)},
+            {"$set": item_data}
+        )
+        return {"status": "updated"}
+    except:
+        raise HTTPException(status_code=400, detail="Invalid Item ID")
+
+@app.delete("/api/admin/inventory/{tenant_id}/{item_id}")
+async def delete_inventory_item(tenant_id: str, item_id: str):
+    db = get_db()
+    try:
+        await db[f"inventory.{tenant_id}"].delete_one({"_id": ObjectId(item_id)})
+        return {"status": "deleted"}
+    except:
+        raise HTTPException(status_code=400, detail="Invalid Item ID")
 
 # --- MOUNT DASHBOARD FROM ROOT FE FOLDER ---
 

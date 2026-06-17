@@ -91,12 +91,18 @@ def format_manual_inventory_for_ai(items: List[Dict[str, Any]]) -> str:
     
     lines = []
     for item in items:
-        info = f"🛍️ *{item.get('title')}*\n"
-        info += f"🎨 Colors: {', '.join(item.get('color', []))}\n"
-        info += f"📏 Sizes: {', '.join(item.get('size', []))}\n"
-        if item.get('description'):
-            desc = item.get('description')
-            info += f"📝 {desc[:75]}...\n"
-        lines.append(info)
+        lines.append(format_single_item_for_whatsapp(item))
     
     return "\n".join(lines)
+
+def format_single_item_for_whatsapp(item: Dict[str, Any]) -> str:
+    """Formats a single manual inventory item for WhatsApp."""
+    info = f"🛍️ *{item.get('title')}*\n"
+    if item.get('color'):
+        info += f"🎨 Colors: {', '.join(item.get('color', []))}\n"
+    if item.get('size'):
+        info += f"📏 Sizes: {', '.join(item.get('size', []))}\n"
+    if item.get('description'):
+        desc = item.get('description')
+        info += f"📝 {desc[:75]}...\n"
+    return info

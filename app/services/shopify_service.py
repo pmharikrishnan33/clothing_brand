@@ -13,7 +13,7 @@ CATEGORIES = {
     "shirt": ["shirt", "shirts"],
     "tshirt": ["tshirt", "t-shirt", "tee"],
     "jeans": ["jeans", "denim"],
-    "trouser": ["trouser", "pants", "chino"],
+    "trouser": ["trouser", "pants", "chino","pant"],
     "clothing": ["clothing", "wear", "apparel"]
 }
 
@@ -149,35 +149,31 @@ def format_products_for_ai(products: List[Dict[str, Any]], shop_url: Optional[st
         return "No matching items found in inventory."
     
     lines = []
-    for p in products[:3]:  # Top 3 products for better visibility in WhatsApp
-        title = p.get("title", "Unknown Item")
-        # Clean HTML from description and resolve common entities
-        raw_desc = p.get("body_html", "") or ""
-        description = re.sub(r'<[^>]*>', '', raw_desc).replace('&nbsp;', ' ').strip()
-        description = (description[:100] + "...") if len(description) > 100 else description
-        
-        variants = p.get("variants", [{}])
-        price = variants[0].get("price", "N/A")
-
-        # Extract Options (Colors and Sizes)
-        options = p.get("options", [])
-        colors = next((opt.get("values", []) for opt in options if opt.get("name", "").lower() == "color"), [])
-        sizes = next((opt.get("values", []) for opt in options if opt.get("name", "").lower() == "size"), [])
-
-        # Construct Link if shop_url and handle are available
-        link_str = ""
-        if shop_url and p.get("handle"):
-            link_str = f"\n🔗 View: https://{shop_url}/products/{p.get('handle')}"
-
-        product_info = f"🛍️ *{title}*\n💰 Price: ₹{price}"
-        
-        if colors:
-            product_info += f"\n🎨 Colors: {', '.join(colors)}"
-        if sizes:
-            product_info += f"\n📏 Sizes: {', '.join(sizes)}"
-        if description:
-            product_info += f"\n📝 {description}"
-        
-        product_info += link_str
-        lines.append(product_info)
+    for p in products[:3]:
+        lines.append(format_single_product_for_whatsapp(p, shop_url))
     return "\n\n".join(lines)
+
+def format_single_product_for_whatsapp(p: Dict[str, Any], shop_url: Optional[str] = None) -> str:
+    """Formats a single Shopify product for WhatsApp display."""
+    title = p.get("title", "Unknown Item")
+    raw_desc = p.get("body_html", "") or ""
+    description = re.sub(r'<[^>]*>', '', raw_desc).replace('&nbsp;', ' ').strip()
+    description = (description[:100] + "...") if len(description) > 100 else description
+    
+    variants = p.get("variants", [{}])
+    price = variants[0].get("price", "N/A")
+
+    options = p.get("options", [])
+    colors = next((opt.get("values", []) for opt in options if opt.get("name", "").lower() == "color"), [])
+    sizes = next((opt.get("values", []) for opt in options if opt.get("name", "").lower() == "size"), [])
+
+    link_str = ""
+    if shop_url and p.get("handle"):
+        link_str = f"\n🔗 https://{shop_url}/products/{p.get('handle')}"
+
+    product_info = f"🛍️ *{title}*\n💰 ₹{price}"
+    if colors: product_info += f"\n🎨 {', '.join(colors)}"
+    if sizes: product_info += f"\n📏 {', '.join(sizes)}"
+    if description: product_info += f"\n📝 {description}"
+    product_info += link_str
+    return product_info
