@@ -11,17 +11,27 @@ COLORS = ["black", "white", "blue", "red", "green", "yellow", "pink", "grey", "g
 
 CATEGORIES = {
     "shirt": ["shirt", "shirts"],
-    "tshirt": ["tshirt", "t-shirt", "tee"],
+    "tshirt": ["tshirt", "t-shirt", "tee", "tshirts"],
     "jeans": ["jeans", "denim"],
-    "trouser": ["trouser", "pants", "chino","pant"],
-    "clothing": ["clothing", "wear", "apparel"]
+    "trouser": ["trouser", "pants", "chino", "pant", "trousers"],
+    "skirt": ["skirt", "skirts"],
+    "shorts": ["shorts", "cargo shorts", "bermudas"],
+    "dress": ["dress", "gown", "frock", "dresses"],
+    "suit": ["suit", "tuxedo", "blazer", "suits"],
+    "jacket": ["jacket", "coat", "hoodie", "sweater", "outerwear"],
+    "activewear": ["tracksuit", "leggings", "joggers", "gymwear"],
+    "innerwear": ["underwear", "briefs", "boxers", "bra", "panties"],
+    "clothing": ["clothing", "wear", "apparel", "garment"]
 }
 
 TYPES = {
-    "formal": ["formal", "office", "business"],
-    "casual": ["casual", "daily"],
-    "party": ["party", "wedding", "festive"]
+    "formal": ["formal", "office", "business", "corporate"],
+    "casual": ["casual", "daily", "everyday", "relaxed"],
+    "party": ["party", "wedding", "festive", "eveningwear"],
+    "sports": ["sports", "gym", "athletic", "workout"],
+    "loungewear": ["lounge", "sleepwear", "pajamas", "nightwear"]
 }
+
 
 async def fetch_shopify_products(
     shop_url: Optional[str] = None,

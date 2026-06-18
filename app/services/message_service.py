@@ -3,11 +3,13 @@ import logging
 import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+import uuid, Tuple
 import uuid
 from app.core.config import http_client, clean_shopify_url
 
 
 from app.core.database import get_db
+from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai, format_single_item_for_whatsapp, get_distinct_manual_categories
 from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai, format_single_item_for_whatsapp
 from app.services.ai_service import (
     ai_extract_info,
@@ -15,6 +17,7 @@ from app.services.ai_service import (
     generate_ai_response,
 )
 from app.services.pricing_service import record_meta_conversation_usage
+from app.services.shopify_service import extract_rules_info, fetch_clothing_inventory, format_products_for_ai, format_single_product_for_whatsapp, get_distinct_shopify_product_types
 from app.services.shopify_service import extract_rules_info, fetch_clothing_inventory, format_products_for_ai, format_single_product_for_whatsapp
 
 logger = logging.getLogger(__name__)
@@ -178,6 +181,8 @@ async def send_whatsapp_message(
     access_token: str, 
     to: str, 
     body: str, 
+    image_url: Optional[str] = None,
+    interactive_payload: Optional[Dict[str, Any]] = None # New parameter for interactive messages
     image_url: Optional[str] = None
 ) -> Dict[str, Any]:
     url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
@@ -191,6 +196,10 @@ async def send_whatsapp_message(
         "to": to,
     }
     
+    if interactive_payload:
+        payload["type"] = "interactive"
+        payload["interactive"] = interactive_payload
+    elif image_url:
     if image_url:
         payload["type"] = "image"
         payload["image"] = {"link": image_url, "caption": body}
@@ -273,13 +282,26 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
             s_token = client.get("shopify_access_token", "")
             s_ver = client.get("shopify_api_version", "2024-01")
 
+            # Step 1: AI Extraction (now includes 'general_inquiry')
+            extraction = await ai_extract_info(
+                incoming_text,
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                client_config=client,
+                interaction_id=interaction_id,
+            )
             # Step 1: Rule-Based Extraction
             rules_data = extract_rules_info(incoming_text)
             inventory_summary = None
             
+            # Handle General Inquiry (Point 3)
+            if extraction.get("action") == "general_inquiry":
+                categories_list = []
             # Step 2: Try Product Search using Rules
             if rules_data["has_data"]:
                 if inventory_source == "shopify" and ENABLE_SHOPIFY_INTEGRATION:
+                    categories_list = await get_distinct_shopify_product_types(
+                        shop_url=s_url, access_token=s_token, api_version=s_ver
                     color_str = " ".join(rules_data['colors'])
                     search_query = f"{color_str} {rules_data['type'] or ''}".strip() or rules_data['category']
                     products = await fetch_clothing_inventory(
@@ -298,12 +320,51 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                     
                     inventory_summary = format_products_for_ai(products, shop_url=s_url)
                 elif inventory_source == "manual":
+                    categories_list = await get_distinct_manual_categories(tenant_id)
+                
+                if categories_list:
+                    sections = [{"title": "Categories", "rows": []}]
+                    for i, cat in enumerate(categories_list[:10]): # Limit to 10 for WhatsApp list message
+                        sections[0]["rows"].append({
+                            "id": f"category_{cat.lower().replace(' ', '_')}",
+                            "title": cat,
+                            "description": f"Explore {cat}"
+                        )
+                    
+                    interactive_payload = {
+                        "type": "list",
+                        "header": {"type": "text", "text": "Explore Our Collection"},
+                        "body": {"text": "We offer a wide variety of premium clothing. Please select a category to explore:"},
+                        "footer": {"text": "Tap to view options"},
+                        "action": {
+                            "button": "View Categories",
+                            "sections": sections
+                        }
+                    }
+                    # Send interactive message and return
+                    send_result = await send_whatsapp_message(
+                        phone_id, access_token, from_phone, interactive_payload=interactive_payload
+                    )
+                    if send_result.get("status") == "error":
+                        logger.error("Failed to send interactive category message: %s", send_result.get("detail"))
+                        return {"status": "error", "reason": "whatsapp_send_failed"}
+                    
+                    await save_message_record(
                     items = await search_tenant_inventory(
                         tenant_id=tenant_id,
+                        channel_id=channel_id,
+                        customer_phone=from_phone,
+                        direction="outbound",
+                        body="Interactive category message sent.",
+                        raw_payload={"source": "message_service", "send_result": send_result},
                         category=rules_data['category'],
+                        item_type=rules_data['type'],
                         colors=rules_data['colors'],
                         limit=3
                     )
+                    return {"status": "success", "tenant_id": tenant_id, "reply": "Interactive category message sent."}
+                else:
+                    reply = "We offer a variety of clothing items! What are you looking for?"
                     if items:
                         for item in items[:3]:
                             items_to_send.append({
@@ -314,6 +375,10 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
 
                 extraction = {"action": "inquiry", "item": rules_data['category'], "details": "Extracted via rules"}
             
+            # If not general inquiry, proceed with AI response generation (now with tool calling)
+            if not reply: # If reply wasn't set by general_inquiry handler
+                ai_reply_text, items_from_tool = await generate_ai_response(
+                    extraction,
             # Step 3: Fallback to AI Extraction if Rules yielded nothing
             else:
                 extraction = await ai_extract_info(
@@ -323,6 +388,8 @@ async def message_service(client: Dict[str, Any], from_phone: str, text_data: st
                     client_config=client,
                     interaction_id=interaction_id,
                 )
+                reply = ai_reply_text
+                items_to_send = items_from_tool # Populate items_to_send from AI service result
                 item_query = extraction.get("item")
                 if item_query:
                     if inventory_source == "shopify" and ENABLE_SHOPIFY_INTEGRATION:

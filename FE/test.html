@@ -3,45 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zyphor Master Admin</title>
+    <title>Meridin Master Admin</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
         :root {
-            --primary: #2563eb;
-            --sidebar-bg: #0f172a;
-            --bg: #f8fafc;
-            --card: #ffffff;
-            --text: #1e293b;
-            --border: #e2e8f0;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --sidebar-bg: #090d16;
+            --bg: #0f172a;
+            --card: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+            --glass-bg: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.05);
         }
+        
         [x-cloak] { display: none !important; }
-        body { font-family: 'Inter', sans-serif; margin: 0; background: var(--bg); color: var(--text); overflow-x: hidden; }
-        .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 240px; background: var(--sidebar-bg); color: white; padding: 24px 0; }
-        .nav-item { padding: 12px 24px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.2s; }
-        .nav-item:hover { background: #1e293b; }
-        .nav-item.active { border-left: 4px solid var(--primary); background: #1e293b; }
-        .main { margin-left: 240px; padding: 32px; min-height: 100vh; }
-        .card { background: white; border-radius: 12px; border: 1px solid var(--border); padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); font-size: 12px; text-transform: uppercase; color: #64748b; }
-        td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-        .btn { padding: 8px 16px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600; font-size: 14px; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-danger { background: #ef4444; color: white; }
-        input, select, textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; font-family: inherit; }
-        .field-group { margin-bottom: 16px; }
-        label { font-size: 12px; font-weight: 700; color: #64748b; }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: var(--bg); 
+            color: var(--text-main); 
+            overflow-x: hidden;
+            background-image: radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 35%), 
+                              radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
+            background-attachment: fixed;
+        }
 
-        /* Modal Styles */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
-        .modal-content { background: white; width: 650px; max-width: 95vw; max-height: 90vh; overflow-y: auto; border-radius: 12px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+        /* Sidebar Glass Styling */
+        .sidebar { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            bottom: 0; 
+            width: 260px; 
+            background: var(--sidebar-bg); 
+            border-right: 1px solid var(--card-border);
+            padding: 32px 0; 
+            z-index: 10;
+        }
+        
+        .brand-logo {
+            padding: 0 28px 32px; 
+            font-weight: 800; 
+            font-size: 22px; 
+            letter-spacing: -0.025em;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand-logo span { color: var(--primary); }
+
+        .nav-item { 
+            padding: 14px 28px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            gap: 14px; 
+            color: var(--text-muted);
+            transition: all 0.2s ease; 
+            font-weight: 600; 
+            font-size: 14px;
+        }
+        .nav-item:hover { color: #fff; background: rgba(255,255,255,0.03); }
+        .nav-item.active { 
+            color: #fff;
+            border-left: 4px solid var(--primary); 
+            background: rgba(99, 102, 241, 0.1); 
+        }
+
+        /* Main Section Container Grid */
+        .main { margin-left: 260px; padding: 48px 56px; min-height: 100vh; }
+        
+        /* Glassmorphism Card Layouts */
+        .card { 
+            background: var(--card); 
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 16px; 
+            border: 1px solid var(--card-border); 
+            padding: 32px; 
+            margin-bottom: 32px; 
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .view-header {
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 32px;
+        }
+        .view-header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+
+        /* Tables Professional Design */
+        .table-container { overflow-x: auto; width: 100%; margin-top: 16px; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { 
+            padding: 16px; 
+            border-bottom: 1px solid var(--border); 
+            font-size: 11px; 
+            text-transform: uppercase; 
+            color: var(--text-muted); 
+            letter-spacing: 0.08em; 
+            font-weight: 700;
+        }
+        td { padding: 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 14px; color: #e2e8f0; }
+        tr:hover td { background: rgba(255,255,255,0.01); }
+
+        /* Form Controls */
+        .btn { 
+            padding: 10px 20px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            border: none; 
+            font-weight: 600; 
+            font-size: 14px; 
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .btn-danger { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.3); color: #fff; }
+        .btn-secondary { background: rgba(255, 255, 255, 0.05); color: #e2e8f0; border: 1px solid var(--border); }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+
+        input, select, textarea { 
+            width: 100%; 
+            padding: 12px; 
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border); 
+            border-radius: 8px; 
+            color: white;
+            margin-top: 6px; 
+            font-family: inherit; 
+            font-size: 14px; 
+            transition: all 0.2s ease;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+        select option { background: #0f172a; color: white; }
+
+        .field-group { margin-bottom: 20px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .badge {
+            padding: 4px 8px; font-size: 11px; font-weight: 600; border-radius: 4px; display: inline-block;
+        }
+        .badge-active { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .badge-offline { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+        /* Modal Blur Animations */
+        .modal-overlay { 
+            position: fixed; 
+            inset: 0; 
+            background: rgba(4, 6, 11, 0.85); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 1000; 
+            backdrop-filter: blur(8px); 
+            padding: 20px;
+        }
+        .modal-content { 
+            background: #111827; 
+            border: 1px solid var(--card-border);
+            width: 680px; 
+            max-width: 100%; 
+            max-height: 90vh; 
+            overflow-y: auto; 
+            border-radius: 16px; 
+            padding: 36px; 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); 
+        }
+        .modal-content h2 { font-size: 24px; font-weight: 700; margin-bottom: 24px; letter-spacing: -0.02em; }
     </style>
 </head>
 <body x-data="masterAdmin()">
 
     <div class="sidebar">
-        <div style="padding: 0 24px 24px; font-weight: 800; font-size: 20px; color: var(--primary)">ZYPHOR DB</div>
+        <div class="brand-logo"><i class="fas fa-layer-group"></i> MERIDIN<span>DB</span></div>
         <nav>
             <div @click="view = 'clients'; refreshData()" class="nav-item" :class="view === 'clients' && 'active'"><i class="fas fa-building"></i> Clients</div>
             <div @click="view = 'inventory'; refreshData()" class="nav-item" :class="view === 'inventory' && 'active'"><i class="fas fa-boxes"></i> Inventory</div>
@@ -52,10 +210,10 @@
     </div>
 
     <div class="main">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <div class="view-header">
             <h1 x-text="view.charAt(0).toUpperCase() + view.slice(1)"></h1>
             <div x-show="view !== 'clients'">
-                <select x-model="selectedTenant" @change="refreshData()" style="width: 200px;">
+                <select x-model="selectedTenant" @change="refreshData()" style="width: 220px; margin-top:0;">
                     <option value="">Select Tenant...</option>
                     <template x-for="c in clients" :key="c.tenant_id">
                         <option :value="c.tenant_id" x-text="c.tenant_id"></option>
@@ -64,27 +222,28 @@
             </div>
         </div>
 
-        <!-- CLIENTS VIEW -->
         <template x-if="view === 'clients'">
-            <div>
-                <div class="card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <h3 style="margin:0">Manage Clients</h3>
-                        <button @click="openClientModal()" class="btn btn-primary">+ Add Client</button>
-                    </div>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 style="font-size: 18px; font-weight: 600;">Client Workspaces</h3>
+                    <button @click="openClientModal()" class="btn btn-primary"><i class="fas fa-plus"></i> Add Client</button>
+                </div>
+                <div class="table-container">
                     <table>
                         <thead>
-                            <tr><th>Tenant ID</th><th>Phone ID</th><th>Source</th><th>Status</th><th>Actions</th></tr>
+                            <tr><th>Tenant ID</th><th>Phone ID</th><th>Source</th><th>Status</th><th style="text-align: right;">Actions</th></tr>
                         </thead>
                         <tbody>
                             <template x-for="c in clients">
                                 <tr>
-                                    <td x-text="c.tenant_id"></td>
-                                    <td x-text="c.phone_number_id"></td>
-                                    <td x-text="c.inventory_source"></td>
-                                    <td x-text="c.is_active ? 'Active' : 'Offline'"></td>
-                                    <td style="display: flex; gap: 8px;">
-                                        <button @click="openClientModal(c)" class="btn btn-primary btn-sm" style="background: #64748b">Edit</button>
+                                    <td style="font-weight: 600;" x-text="c.tenant_id"></td>
+                                    <td class="text-muted" x-text="c.phone_number_id"></td>
+                                    <td><span x-text="c.inventory_source" style="text-transform: capitalize;"></span></td>
+                                    <td>
+                                        <span class="badge" :class="c.is_active ? 'badge-active' : 'badge-offline'" x-text="c.is_active ? 'Active' : 'Offline'"></span>
+                                    </td>
+                                    <td style="display: flex; gap: 8px; justify-content: flex-end;">
+                                        <button @click="openClientModal(c)" class="btn btn-secondary btn-sm">Edit</button>
                                         <button @click="deleteClient(c.tenant_id)" class="btn btn-danger btn-sm">Delete</button>
                                     </td>
                                 </tr>
@@ -95,179 +254,222 @@
             </div>
         </template>
 
-        <!-- INVENTORY VIEW -->
         <template x-if="view === 'inventory'">
-            <div>
-                <div class="card" x-show="selectedTenant">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                        <h3 style="margin:0">Inventory (Dresses)</h3>
-                        <button @click="addInventoryItem()" class="btn btn-primary">+ Add Item</button>
+            <div class="card">
+                <div x-show="!selectedTenant" style="text-align: center; color: var(--text-muted); padding: 24px 0;">
+                    <i class="fas fa-arrow-up" style="margin-bottom: 12px; font-size: 24px;"></i>
+                    <p>Please select a tenant from the dropdown above to view manual database inventory.</p>
+                </div>
+                
+                <div x-show="selectedTenant">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h3 style="font-size: 18px; font-weight: 600;">Manual Inventory Collection</h3>
+                        <button @click="addInventoryItem()" class="btn btn-primary"><i class="fas fa-plus"></i> Add Dress Item</button>
                     </div>
-                    <table>
-                        <thead><tr><th>Title</th><th>Category</th><th>Colors</th><th>Sizes</th><th>Actions</th></tr></thead>
-                        <tbody>
-                            <template x-for="item in inventory">
-                                <tr>
-                                    <td x-text="item.title"></td>
-                                    <td x-text="item.category"></td>
-                                    <td x-text="item.color ? item.color.join(', ') : ''"></td>
-                                    <td x-text="item.size ? item.size.join(', ') : ''"></td>
-                                    <td style="display: flex; gap: 8px;">
-                                        <button @click="editInventoryItem(item)" class="btn btn-primary btn-sm" style="background: #64748b">Edit</button>
-                                        <button @click="deleteItem(item._id)" class="btn btn-danger btn-sm">Delete</button>
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Title</th><th>Category</th><th>Type</th><th>Colors</th><th>Sizes</th><th style="text-align: right;">Actions</th></tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="item in inventory">
+                                    <tr>
+                                        <td style="font-weight: 600; color:#fff;" x-text="item.title"></td>
+                                        <td><span class="badge btn-secondary" x-text="item.category || 'Uncategorized'"></span></td>
+                                        <td><span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc;" x-text="item.type || 'Generic'"></span></td>
+                                        <td class="text-muted" x-text="item.color ? item.color.join(', ') : '-'"></td>
+                                        <td class="text-muted" x-text="item.size ? item.size.join(', ') : '-'"></td>
+                                        <td style="display: flex; gap: 8px; justify-content: flex-end;">
+                                            <button @click="editInventoryItem(item)" class="btn btn-secondary btn-sm">Edit</button>
+                                            <button @click="deleteItem(item._id)" class="btn btn-danger btn-sm">Delete</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </template>
 
-        <!-- AI RULES VIEW -->
         <template x-if="view === 'rules'">
-            <div x-show="selectedTenant">
-                <div class="card">
-                    <h3>Keyword Response Rules</h3>
+            <div class="card">
+                <div x-show="!selectedTenant" style="text-align: center; color: var(--text-muted); padding: 24px 0;">
+                    <p>Select a tenant workspace to configure conditional intent response triggers.</p>
+                </div>
+                <div x-show="selectedTenant">
+                    <h3 style="margin-bottom: 24px;">Keyword Override Rules</h3>
                     <template x-for="(rule, idx) in rules">
-                        <div class="card" style="background: #f1f5f9;">
+                        <div class="card" style="background: rgba(15, 23, 42, 0.4); margin-bottom: 20px; padding: 24px;">
                             <div class="field-group">
-                                <label>Triggers (Comma separated)</label>
+                                <label>Strict Keyword Activation (Comma separated)</label>
                                 <input type="text" :value="rule.keywords.join(', ')" @input="rule.keywords = $event.target.value.split(',').map(s=>s.trim())">
                             </div>
                             <div class="field-group">
-                                <label>Response</label>
-                                <textarea x-model="rule.responses[0]"></textarea>
+                                <label>Static Webhook/Bot Payload Match Response</label>
+                                <textarea rows="3" x-model="rule.responses[0]"></textarea>
                             </div>
-                            <button @click="rules.splice(idx,1)" class="btn btn-danger">Remove Rule</button>
+                            <button @click="rules.splice(idx,1)" class="btn btn-danger btn-sm">Remove Rule Matrix</button>
                         </div>
                     </template>
-                    <button @click="rules.push({keywords:['new'], responses:['Hello'], is_active:true})" class="btn btn-primary">Add Rule</button>
-                    <button @click="saveRules()" class="btn btn-primary" style="background: #10b981">Save All Rules</button>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button @click="rules.push({keywords:['new'], responses:['Hello'], is_active:true})" class="btn btn-secondary">Add Rule Template</button>
+                        <button @click="saveRules()" class="btn btn-primary" style="background: #10b981">Commit Changes</button>
+                    </div>
                 </div>
             </div>
         </template>
 
-        <!-- LEARNED VIEW -->
         <template x-if="view === 'learned'">
-            <div x-show="selectedTenant">
-                <div class="card">
-                    <h3>AI Learned Patterns</h3>
+            <div class="card">
+                <div x-show="!selectedTenant" style="text-align: center; color: var(--text-muted); padding: 24px 0;">
+                    <p>Select a tenant space to view dynamically trained user intent matching sets.</p>
+                </div>
+                <div x-show="selectedTenant">
+                    <h3 style="margin-bottom: 24px;">Trained Generative Embeddings Base</h3>
                     <template x-for="(l, idx) in learned">
-                        <div style="padding: 12px; border: 1px solid var(--border); margin-bottom: 8px; border-radius: 8px;">
-                            <div style="font-weight: bold" x-text="'[' + l.keywords.join(' + ') + ']'"></div>
-                            <input type="text" x-model="l.response" style="margin: 8px 0">
-                            <button @click="learned.splice(idx,1)" class="btn btn-danger btn-sm">Delete</button>
+                        <div style="padding: 20px; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); margin-bottom: 12px; border-radius: 10px;">
+                            <div style="font-weight: 700; color: var(--primary)" x-text="'Pattern Cluster: [' + l.keywords.join(' + ') + ']'"></div>
+                            <input type="text" x-model="l.response" style="margin: 12px 0 16px 0">
+                            <button @click="learned.splice(idx,1)" class="btn btn-danger btn-sm">Flush Pattern</button>
                         </div>
                     </template>
-                    <button @click="saveLearned()" class="btn btn-primary" style="margin-top: 12px">Update Learned Base</button>
+                    <button @click="saveLearned()" class="btn btn-primary" style="margin-top: 16px">Sync Core Knowledge Base</button>
                 </div>
             </div>
         </template>
 
-        <!-- LOGS VIEW -->
         <template x-if="view === 'messages'">
-            <div x-show="selectedTenant">
-                <div class="card">
-                    <h3>Recent Logs (Last 50)</h3>
-                    <template x-for="m in messages">
-                        <div :style="m.direction === 'inbound' ? 'text-align: left; margin-bottom: 12px' : 'text-align: right; margin-bottom: 12px'">
-                            <div :style="m.direction === 'inbound' ? 'background: #e2e8f0; display: inline-block; padding: 12px; border-radius: 12px' : 'background: #dcfce7; display: inline-block; padding: 12px; border-radius: 12px'">
-                                <div style="font-size: 10px; color: #64748b" x-text="m.customer_phone"></div>
-                                <div x-text="m.body"></div>
+            <div class="card">
+                <div x-show="!selectedTenant" style="text-align: center; color: var(--text-muted); padding: 24px 0;">
+                    <p>Select a tenant instance to access real-time transactional socket logs.</p>
+                </div>
+                <div x-show="selectedTenant">
+                    <h3 style="margin-bottom: 24px;">Message Log Trace (Max 50)</h3>
+                    <div style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto; padding-right: 12px;">
+                        <template x-for="m in messages">
+                            <div :style="m.direction === 'inbound' ? 'align-self: flex-start; max-width: 75%;' : 'align-self: flex-end; max-width: 75%;'">
+                                <div :style="m.direction === 'inbound' ? 'background: rgba(255,255,255,0.05); border: 1px solid var(--border);' : 'background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.2);'" style="padding: 16px; border-radius: 14px;">
+                                    <div style="font-size: 11px; font-weight:700; margin-bottom: 4px; color: var(--text-muted);" x-text="m.customer_phone"></div>
+                                    <div style="font-size: 14px; line-height: 1.5;" x-text="m.body"></div>
+                                </div>
                             </div>
-                        </div>
-                    </template>
+                        </template>
+                    </div>
                 </div>
             </div>
         </template>
     </div>
 
-    <!-- CLIENT MODAL -->
     <div x-show="modalOpen" class="modal-overlay" x-cloak>
         <div class="modal-content" @click.away="modalOpen = false">
-            <h2 x-text="editClient._id ? 'Edit Client: ' + editClient.tenant_id : 'Add New Client'"></h2>
+            <h2 x-text="editClient._id ? 'Modify Client Instance: ' + editClient.tenant_id : 'Initialize New Client Stack'"></h2>
+            
             <div class="field-group">
-                <label>Tenant ID (Unique Name)</label>
+                <label>Unique Tenant ID Namespace</label>
                 <input type="text" x-model="editClient.tenant_id" :disabled="!!editClient._id">
             </div>
-            <div class="field-group">
-                <label>WhatsApp Phone Number ID</label>
-                <input type="text" x-model="editClient.phone_number_id">
+            <div class="form-grid">
+                <div class="field-group">
+                    <label>Meta Phone ID</label>
+                    <input type="text" x-model="editClient.phone_number_id">
+                </div>
+                <div class="field-group">
+                    <label>System Status</label>
+                    <select x-model="editClient.is_active">
+                        <option :value="true">Active Routing</option>
+                        <option :value="false">Disabled / Offline</option>
+                    </select>
+                </div>
             </div>
             <div class="field-group">
-                <label>WhatsApp Access Token</label>
+                <label>Permanent System Access Token</label>
                 <input type="password" x-model="editClient.whatsapp_token">
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <div class="field-group">
-                    <label>Inventory Source</label>
-                    <select x-model="editClient.inventory_source">
-                        <option value="manual">Manual (Zyphor DB)</option>
-                        <option value="shopify">Shopify API</option>
-                    </select>
-                </div>
-                <div class="field-group">
-                    <label>Bot Status</label>
-                    <select x-model="editClient.is_active">
-                        <option :value="true">Active</option>
-                        <option :value="false">Disabled</option>
-                    </select>
-                </div>
-            </div>
-            <div x-show="editClient.inventory_source === 'shopify'" style="background: #f8fafc; border: 1px solid var(--border); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                <h4 style="margin: 0 0 12px 0">Shopify Integration</h4>
-                <label>Store URL</label>
-                <input type="text" x-model="editClient.shopify_url" placeholder="your-store.myshopify.com">
-                <label style="margin-top: 12px; display: block;">Admin Access Token</label>
-                <input type="password" x-model="editClient.shopify_access_token">
-            </div>
             <div class="field-group">
-                <label>AI Stylist Persona (System Prompt)</label>
-                <textarea rows="4" x-model="editClient.ai_system_prompt"></textarea>
+                <label>Inventory Data Sync Mode</label>
+                <select x-model="editClient.inventory_source">
+                    <option value="manual">Manual Execution (Meridin DB Engine)</option>
+                    <option value="shopify">Automated Webhook (Shopify Core App Config)</option>
+                </select>
             </div>
-            <div style="display: flex; gap: 8px; margin-top: 24px;">
-                <button @click="saveClient()" class="btn btn-primary" style="flex:1">Save Configuration</button>
-                <button @click="modalOpen = false" class="btn" style="background: #e2e8f0;">Cancel</button>
+
+            <div x-show="editClient.inventory_source === 'shopify'" style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h4 style="margin: 0 0 16px 0; font-size:14px;">Shopify Enterprise Context</h4>
+                <div class="field-group">
+                    <label>Store Subdomain URL</label>
+                    <input type="text" x-model="editClient.shopify_url" placeholder="example-app.myshopify.com">
+                </div>
+                <div class="field-group" style="margin-bottom: 0;">
+                    <label>Admin Engine Scoped Access Key</label>
+                    <input type="password" x-model="editClient.shopify_access_token">
+                </div>
+            </div>
+
+            <div class="field-group">
+                <label>Generative Assistant Master Prompt (AI Stylist Persona)</label>
+                <textarea rows="5" x-model="editClient.ai_system_prompt"></textarea>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 32px;">
+                <button @click="saveClient()" class="btn btn-primary" style="flex:1">Commit Configuration</button>
+                <button @click="modalOpen = false" class="btn btn-secondary">Abort</button>
             </div>
         </div>
     </div>
 
-    <!-- INVENTORY MODAL -->
     <div x-show="itemModalOpen" class="modal-overlay" x-cloak>
         <div class="modal-content">
-            <h2 x-text="newItem._id ? 'Edit Dress / Item' : 'Add New Dress / Item'"></h2>
+            <h2 x-text="newItem._id ? 'Edit Manual Schema Item' : 'Create Manual Schema Item'"></h2>
+            
             <div class="field-group">
-                <label>Product Title</label>
-                <input type="text" x-model="newItem.title" placeholder="e.g. Blue Summer Dress">
+                <label>Product Catalog Title</label>
+                <input type="text" x-model="newItem.title" placeholder="Classic Linen Suit Top">
             </div>
             <div class="field-group">
-                <label>Description</label>
-                <textarea rows="3" x-model="newItem.description"></textarea>
+                <label>Structural Engine Description</label>
+                <textarea rows="3" x-model="newItem.description" placeholder="Provide details used during vector similarity scanning..."></textarea>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            
+            <div class="form-grid">
                 <div class="field-group">
-                    <label>Category</label>
-                    <input type="text" x-model="newItem.category" placeholder="Clothing">
+                    <label>Engine Core Category Mapping</label>
+                    <select x-model="newItem.category">
+                        <option value="">Select Category Key...</option>
+                        <template x-for="cat in Object.keys(categoryMapping)" :key="cat">
+                            <option :value="cat" x-text="cat"></option>
+                        </template>
+                    </select>
                 </div>
                 <div class="field-group">
-                    <label>Colors (Comma separated)</label>
-                    <input type="text" placeholder="Blue, Black" :value="newItem.color ? newItem.color.join(', ') : ''" @input="newItem.color = $event.target.value.split(',').map(s=>s.trim())">
+                    <label>Engine Functional Style Type</label>
+                    <select x-model="newItem.type">
+                        <option value="">Select Style Context...</option>
+                        <template x-for="t in Object.keys(typeMapping)" :key="t">
+                            <option :value="t" x-text="t"></option>
+                        </template>
+                    </select>
                 </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+
+            <div class="form-grid">
                 <div class="field-group">
-                    <label>Sizes (Comma separated)</label>
-                    <input type="text" placeholder="S, M, L" :value="newItem.size ? newItem.size.join(', ') : ''" @input="newItem.size = $event.target.value.split(',').map(s=>s.trim())">
+                    <label>Color Matrix Tokens (Comma separated)</label>
+                    <input type="text" placeholder="Crimson, Midnight Black" :value="newItem.color ? newItem.color.join(', ') : ''" @input="newItem.color = $event.target.value.split(',').map(s=>s.trim()).filter(Boolean)">
                 </div>
                 <div class="field-group">
-                    <label>Media/Image URL</label>
-                    <input type="text" x-model="newItem.media[0]" placeholder="https://image.url">
+                    <label>Size Array Tokens (Comma separated)</label>
+                    <input type="text" placeholder="S, M, L, XL" :value="newItem.size ? newItem.size.join(', ') : ''" @input="newItem.size = $event.target.value.split(',').map(s=>s.trim()).filter(Boolean)">
                 </div>
             </div>
-            <div style="display: flex; gap: 8px; margin-top: 24px;">
-                <button @click="saveInventoryItem()" class="btn btn-primary" style="flex:1">Save Item</button>
-                <button @click="itemModalOpen = false" class="btn" style="background: #e2e8f0;">Cancel</button>
+            
+            <div class="field-group">
+                <label>Public Asset CDN Endpoint Asset Array (Media URL)</label>
+                <input type="text" x-model="newItem.media[0]" placeholder="https://cdn.meridin.io/assets/item.jpg">
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-top: 32px;">
+                <button @click="saveInventoryItem()" class="btn btn-primary" style="flex:1">Persist Data Record</button>
+                <button @click="itemModalOpen = false" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -284,12 +486,35 @@
                 messages: [],
                 modalOpen: false,
                 itemModalOpen: false,
-                newItem: { title: '', description: '', category: 'Clothing', color: [], size: [], media: [] },
+                
+                // Complete Dictionary Mapping Models
+                categoryMapping: {
+                    "shirt": ["shirt", "shirts"],
+                    "tshirt": ["tshirt", "t-shirt", "tee", "tshirts"],
+                    "jeans": ["jeans", "denim"],
+                    "trouser": ["trouser", "pants", "chino", "pant", "trousers"],
+                    "skirt": ["skirt", "skirts"],
+                    "shorts": ["shorts", "cargo shorts", "bermudas"],
+                    "dress": ["dress", "gown", "frock", "dresses"],
+                    "suit": ["suit", "tuxedo", "blazer", "suits"],
+                    "jacket": ["jacket", "coat", "hoodie", "sweater", "outerwear"],
+                    "activewear": ["tracksuit", "leggings", "joggers", "gymwear"],
+                    "innerwear": ["underwear", "briefs", "boxers", "bra", "panties"],
+                    "clothing": ["clothing", "wear", "apparel", "garment"]
+                },
+                typeMapping: {
+                    "formal": ["formal", "office", "business", "corporate"],
+                    "casual": ["casual", "daily", "everyday", "relaxed"],
+                    "party": ["party", "wedding", "festive", "eveningwear"],
+                    "sports": ["sports", "gym", "athletic", "workout"],
+                    "loungewear": ["lounge", "sleepwear", "pajamas", "nightwear"]
+                },
+                
+                newItem: { title: '', description: '', category: '', type: '', color: [], size: [], media: [] },
                 editClient: {},
-                // Improved API base detection
+
                 get apiBase() {
-                    // If running on port 5500 (Live Server), redirect API calls to port 8000
-                    if (window.location.port === '5500') {
+                    if (window.location.port === '5500' || window.location.port === '3000') {
                         return `${window.location.protocol}//${window.location.hostname}:8000`;
                     }
                     return '';
@@ -302,29 +527,28 @@
                 async loadClients() {
                     try {
                         const res = await fetch(`${this.apiBase}/api/admin/clients`, { cache: 'no-store' });
-                        if (!res.ok) throw new Error('Failed to fetch');
+                        if (!res.ok) throw new Error('Failed tracking clients network channel');
                         this.clients = await res.json();
-                        console.log("✅ Successfully loaded clients:", this.clients);
                     } catch (err) {
-                        console.error("❌ API Connection Error. Check if backend is running on port 8000.", err);
+                        console.error("❌ Network Context Break on Engine Port 8000:", err);
                     }
                 },
 
                 openClientModal(client = null) {
                     this.editClient = client ? JSON.parse(JSON.stringify(client)) : {
-                        _id: null, // Explicitly set to null for new clients
+                        _id: null,
                         tenant_id: '',
                         phone_number_id: '',
                         whatsapp_token: '',
                         inventory_source: 'manual',
                         is_active: true,
-                        ai_system_prompt: 'You are an AI Stylist assistant helping customers find clothes.'
+                        ai_system_prompt: 'You are an AI Stylist working inside Meridin Orchestration Engine framework.'
                     };
                     this.modalOpen = true;
                 },
 
                 async saveClient() {
-                    if (!this.editClient.tenant_id) return alert('Tenant ID is required');
+                    if (!this.editClient.tenant_id) return alert('Valid Tenant ID signature required');
                     const res = await fetch(`${this.apiBase}/api/admin/clients`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -334,17 +558,15 @@
                         this.modalOpen = false;
                         await this.loadClients();
                     } else {
-                        alert('Error saving client');
+                        alert('Error execution processing client persistence');
                     }
                 },
 
                 async refreshData() {
-                    // If we are on the clients view, refresh the client list regardless of selection
                     if (this.view === 'clients') {
                         await this.loadClients();
                         return;
                     }
-
                     if (!this.selectedTenant) return;
                     
                     if (this.view === 'inventory') await this.loadInventory();
@@ -356,7 +578,7 @@
                 async loadInventory() {
                     const res = await fetch(`${this.apiBase}/api/admin/inventory/${this.selectedTenant}`);
                     const data = await res.json();
-                    this.inventory = data.items;
+                    this.inventory = data.items || [];
                 },
 
                 async loadRules() {
@@ -377,7 +599,7 @@
                 },
 
                 async deleteClient(tid) {
-                    if (confirm(`Delete ${tid}?`)) {
+                    if (confirm(`Terminate workspace instance ${tid}?`)) {
                         await fetch(`${this.apiBase}/api/admin/clients/${tid}`, { method: 'DELETE' });
                         await this.loadClients();
                     }
@@ -389,7 +611,7 @@
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ rules: this.rules })
                     });
-                    alert('Rules updated');
+                    alert('Routing rules synced to tenant storage');
                 },
 
                 async saveLearned() {
@@ -398,7 +620,7 @@
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ learned: this.learned })
                     });
-                    alert('Patterns updated');
+                    alert('Dynamic embedding tokens synced');
                 },
 
                 async deleteItem(id) {
@@ -407,31 +629,37 @@
                 },
 
                 async addInventoryItem() {
-                    this.newItem = { title: '', description: '', category: 'Clothing', color: [], size: [], media: [] };
+                    this.newItem = { title: '', description: '', category: '', type: '', color: [], size: [], media: [''] };
                     this.itemModalOpen = true;
                 },
 
                 editInventoryItem(item) {
                     this.newItem = JSON.parse(JSON.stringify(item));
+                    if (!this.newItem.media || this.newItem.media.length === 0) this.newItem.media = [''];
                     this.itemModalOpen = true;
                 },
 
                 async saveInventoryItem() {
-                    if (!this.newItem.title) return alert('Title required');
+                    if (!this.newItem.title) return alert('Catalog verification failed: Title missing');
+                    if (!this.newItem.category || !this.newItem.type) return alert('Execution aborted: Category and Type maps must be selected explicitly');
                     
                     const method = this.newItem._id ? 'PATCH' : 'POST';
                     const url = this.newItem._id 
                         ? `${this.apiBase}/api/admin/inventory/${this.selectedTenant}/${this.newItem._id}`
                         : `${this.apiBase}/inventory/${this.selectedTenant}/items`;
 
-                    await fetch(url, {
+                    const response = await fetch(url, {
                         method: method,
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(this.newItem)
                     });
                     
-                    this.itemModalOpen = false;
-                    await this.loadInventory();
+                    if (response.ok) {
+                        this.itemModalOpen = false;
+                        await this.loadInventory();
+                    } else {
+                        alert('API returned operational fault handling data mutation');
+                    }
                 }
             }
         }
