@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 from bson import ObjectId
+from datetime import datetime
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,9 @@ from app.core.client_manager import get_client_config
 from app.core.database import init_db
 from app.core.config import VERIFY_TOKEN, APP_SECRET, clean_shopify_url
 from app.services.message_service import message_service
+from app.services.inventory_service import get_inventory_by_tenant, get_inventory_metadata, update_inventory_metadata
+from app.services.pricing_service import usage_summary
+from app.services.ai_service import generate_system_prompt
 from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai
 
 @asynccontextmanager
@@ -101,6 +105,44 @@ async def update_learned(tenant_id: str, data: dict):
     await db.learned_keywords.update_one({"tenant_id": tenant_id}, {"$set": {"learned": learned}}, upsert=True)
     return {"status": "success"}
 
+@app.get("/api/admin/usage/{tenant_id}")
+async def get_tenant_usage(tenant_id: str, start: Optional[str] = None, end: Optional[str] = None):
+    """Provides AI and Meta usage summary for the dashboard."""
+    start_dt = datetime.fromisoformat(start) if start else None
+    end_dt = datetime.fromisoformat(end) if end else None
+    return await usage_summary(tenant_id, start_dt, end_dt)
+
+@app.get("/api/admin/metadata/{tenant_id}")
+async def get_metadata(tenant_id: str):
+    """Fetches inventory metadata (colors/sizes mappings) for the admin panel."""
+    return await get_inventory_metadata(tenant_id)
+
+@app.post("/api/admin/metadata/{tenant_id}")
+async def post_metadata(tenant_id: str, data: dict):
+    """Updates inventory metadata mappings."""
+    await update_inventory_metadata(tenant_id, data)
+    return {"status": "success"}
+
+@app.post("/api/admin/onboarding/{tenant_id}")
+async def onboarding_setup(tenant_id: str, data: dict):
+    """
+    Automated compilation pipeline for shop profile.
+    Generates and saves the ai_system_prompt based on brand indicators.
+    """
+    db = get_db()
+    brand = data.get("brand_identity", "Premium Boutique")
+    audience = data.get("target_audience", "fashion enthusiasts")
+    tone = data.get("communication_tone", "warm and helpful")
+    
+    persona = generate_system_prompt(brand, audience, tone)
+    
+    await db.clients.update_one(
+        {"tenant_id": tenant_id},
+        {"$set": {"ai_system_prompt": persona, "onboarding_completed": True}},
+        upsert=True
+    )
+    return {"status": "success", "compiled_prompt": persona}
+
 @app.get("/api/admin/messages/{tenant_id}")
 async def get_messages(tenant_id: str, limit: int = 50):
     db = get_db()
@@ -111,10 +153,7 @@ async def get_messages(tenant_id: str, limit: int = 50):
 
 @app.get("/api/admin/inventory/{tenant_id}")
 async def admin_get_inventory(tenant_id: str):
-    db = get_db()
-    items = await db[f"inventory.{tenant_id}"].find().sort("_id", -1).to_list(length=100)
-    for item in items:
-        item["_id"] = str(item["_id"])
+    items = await get_inventory_by_tenant(tenant_id, limit=100)
     return {"items": items}
 
 @app.patch("/api/admin/inventory/{tenant_id}/{item_id}")

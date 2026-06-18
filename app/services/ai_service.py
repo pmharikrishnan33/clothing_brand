@@ -4,7 +4,6 @@ import logging
 import os
 import string
 from typing import Any, Dict, List, Optional, Tuple
-from typing import Any, Dict, Optional
 from google import genai
 from app.core.config import GEMINI_CLIENT as client, GEMINI_API_KEY
 
@@ -24,12 +23,29 @@ class SafeFormatter(string.Formatter):
 
 DEFAULT_EXTRACTION_PROMPT = """{persona}
 Given a message, return a JSON object with the following fields:
-- action: the main action the customer wants (e.g., refund, track_order, complaint, inquiry, general_inquiry)
-- action: the main action the customer wants (e.g., refund, track_order, complaint, inquiry)
+- action: the main action the customer wants (e.g., refund, track_order, inquiry, general_inquiry)
 - item: the product/item mentioned, if any (e.g., shirt, laptop), else null
 - details: a short summary of the request
 Only return valid JSON, nothing else.
 Message: {message}"""
+
+INVENTORY_TOOL = {
+    "function_declarations": [
+        {
+            "name": "search_inventory",
+            "description": "Searches the store inventory for products based on category, color, or price.",
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "category": {"type": "STRING", "description": "e.g. 'pants', 'shirts'"},
+                    "colors": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "e.g. ['red', 'blue']"},
+                    "max_price": {"type": "NUMBER"},
+                    "query": {"type": "STRING", "description": "General keywords"}
+                }
+            }
+        }
+    ]
+}
 
 DEFAULT_RESPONSE_PROMPT = """{persona}
 A customer sent this message: {original_message}
@@ -40,14 +56,23 @@ Our system extracted the following structured information:
 - Details: {details}
 {inventory_context}
 
-CRITICAL RULES:
-- Maximum 30 words
-- Maximum 2 sentences
-- Be direct and concise
-- No formal greetings like Hello! or sign-offs
+Your goal is to respond to the customer.
+If you need more information to fulfill a product request (e.g., size, color, specific style), you MUST ask for those details.
+If the request is broad (e.g., "what do you sell?"), suggest categories.
+If you have enough information to search inventory, use the `search_inventory` tool.
 
-Write a helpful, warm, and concise response addressing their request.
-Return only the plain response text."""
+CRITICAL INSTRUCTIONS:
+- Respond ONLY with a minified JSON payload. Do NOT generate conversational text.
+- The JSON should have an "action" field indicating the next step.
+- Possible actions:
+    - "ask_details": If more information is needed. Include "question" (string) and "missing_slots" (list of strings, e.g., ["size", "color"]).
+    - "search_inventory": If you have enough info to search. The model will call the tool directly.
+    - "general_response": For general inquiries or when no specific product action is taken. Include "text" (string).
+    - "show_categories": If the user asks broadly what is offered.
+- Example for asking details: {{"action": "ask_details", "question": "What size and color are you looking for?", "missing_slots": ["size", "color"]}}
+- Example for general response: {{"action": "general_response", "text": "Hello! How can I help you today?"}}
+- Example for showing categories: {{"action": "show_categories"}}
+"""
 
 DEFAULT_FALLBACK_PROMPT = """{persona} A customer sent this message: {message}
 This message doesn't match any of our predefined topics. Respond warmly if greeting, else explain our scope.
@@ -60,10 +85,11 @@ safe_formatter = SafeFormatter()
 def _strip_code_fences(text: str) -> str:
     text = text.strip().replace("“", "\"").replace("”", "\"")  # Handle fancy quotes
     if text.startswith("```"):
-        text = text.strip("```").strip()
+        text = text.strip("`") # Remove all backticks
+    # If it's a JSON output, it might start with `json`
     if text.lower().startswith("json"):
-        text = text[4:].strip()
-    return text
+        text = text[4:].strip() # Remove 'json' prefix
+    return text.strip() # Final strip
 
 def _response_text(response: Any) -> str:
     # Extracts the text output directly from Gemini's response object
@@ -71,73 +97,15 @@ def _response_text(response: Any) -> str:
         return response.text.strip()
     return ""
 
-# --- Gemini Tool Definitions ---
-inventory_tool_schema = genai.protos.Tool(
-    function_declarations=[
-        genai.protos.FunctionDeclaration(
-            name="search_inventory",
-            description="Search for clothing items in the inventory based on various criteria.",
-            parameters=genai.protos.Schema(
-                type=genai.protos.Type.OBJECT,
-                properties={
-                    "query": genai.protos.Schema(type=genai.protos.Type.STRING, description="A general search query for the item, e.g., 'blue shirt' or 'summer dress'."),
-                    "category": genai.protos.Schema(type=genai.protos.Type.STRING, description="The category of the clothing item, e.g., 'shirt', 'jeans', 'dress'."),
-                    "item_type": genai.protos.Schema(type=genai.protos.Type.STRING, description="The type of the clothing item, e.g., 'formal', 'casual', 'party'."),
-                    "colors": genai.protos.Schema(type=genai.protos.Type.ARRAY, items=genai.protos.Schema(type=genai.protos.Type.STRING), description="A list of desired colors, e.g., ['red', 'blue']."),
-                    "max_price": genai.protos.Schema(type=genai.protos.Type.NUMBER, description="Maximum price for the item."),
-                    "limit": genai.protos.Schema(type=genai.protos.Type.INTEGER, description="Maximum number of results to return (default 5).")
-                },
-                required=["query"] # Query is often the primary driver, but category/colors can be inferred.
-            ),
-        )
-    ]
-)
-
-async def _execute_inventory_tool(
-    tool_call: Any,
-    tenant_id: Optional[str],
-    channel_id: Optional[str],
-    client_config: Optional[Dict[str, Any]],
-    interaction_id: Optional[str],
-) -> Tuple[str, List[Dict[str, Any]]]:
-    """Executes the search_inventory tool and returns formatted results and raw items."""
-    tool_name = tool_call.function.name
-    tool_args = {k: v for k, v in tool_call.function.args.items()}
-    
-    logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
-
-    if tool_name == "search_inventory":
-        inventory_source = client_config.get("inventory_source", "manual") if client_config else "manual"
-        
-        # Extract Shopify Config from DB Client object
-        s_url = clean_shopify_url(client_config.get("shopify_url") or client_config.get("shopify_store_url") or "") if client_config else ""
-        s_token = client_config.get("shopify_access_token", "") if client_config else ""
-        s_ver = client_config.get("shopify_api_version", "2024-01") if client_config else "2024-01"
-
-        products: List[Dict[str, Any]] = []
-        
-        if inventory_source == "shopify":
-            products = await fetch_clothing_inventory(
-                shop_url=s_url, access_token=s_token, api_version=s_ver,
-                query=tool_args.get("query"),
-                category=tool_args.get("category"),
-                max_price=tool_args.get("max_price"),
-            )
-            formatted_output = format_products_for_ai(products, shop_url=s_url)
-        else: # manual inventory
-            products = await search_tenant_inventory(
-                tenant_id=tenant_id,
-                query=tool_args.get("query"),
-                category=tool_args.get("category"),
-                item_type=tool_args.get("item_type"),
-                colors=tool_args.get("colors"),
-                limit=tool_args.get("limit", 5)
-            )
-            formatted_output = format_manual_inventory_for_ai(products)
-        
-        return formatted_output, products[:3] # Return formatted string and top 3 raw items
-    
-    return "Tool not found or not implemented.", []
+def generate_system_prompt(brand_name: str, audience: str, tone: str) -> str:
+    """Generates a structured system persona for the AI based on onboarding data."""
+    return (
+        f"You are the AI Stylist for {brand_name}. Your target audience is {audience}. "
+        f"Your communication tone is {tone}. "
+        "Your primary goal is to assist customers with product inquiries. "
+        "If you need more information (like size, color, or specific style) to fulfill a product request, you MUST ask for those details. "
+        "Respond ONLY with a minified JSON payload. Do NOT generate conversational text unless it's part of a 'general_response' action."
+    )
 
 # -------------------- GEMINI AI EXTRACTION -------------------- 
 async def _record_usage(
@@ -210,20 +178,13 @@ async def generate_ai_response(
     channel_id: Optional[str] = None,
     client_config: Optional[Dict[str, Any]] = None,
     interaction_id: Optional[str] = None,
-) -> Tuple[str, List[Dict[str, Any]]]: # Returns AI response text and list of items
-    inventory: Optional[str] = None,
-) -> str:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]: # Return structured AI response and items
     if not client:
         logger.error("AI client (Gemini) is not initialized. Check GEMINI_API_KEY environment variable. Returning generic response fallback.")
-        return "I understood your request. A team member will follow up shortly.", []
-        return "I understood your request. A team member will follow up shortly."
-        
-    # inventory_context = f"\nAVAILABLE INVENTORY:\n{inventory}" if inventory else "" # Removed
-    inventory_context = f"\nAVAILABLE INVENTORY:\n{inventory}" if inventory else ""
+        return {"action": "general_response", "text": "I understood your request. A team member will follow up shortly."}, []
 
     config = client_config or {}
-    persona = config.get("ai_system_prompt") or "You are an AI Stylist and Concierge. You can search inventory using the provided tools."
-    persona = config.get("ai_system_prompt") or "You are an AI Stylist and Concierge."
+    persona = config.get("ai_system_prompt") or "You are a helpful AI Stylist. Your primary goal is to assist customers with product inquiries. If you need more information (like size, color, or specific style) to fulfill a product request, you MUST ask for those details. Respond ONLY with a minified JSON payload. Do NOT generate conversational text unless it's part of a 'general_response' action."
     template = config.get("full_response_prompt") or DEFAULT_RESPONSE_PROMPT
     
     try:
@@ -234,61 +195,54 @@ async def generate_ai_response(
             action=extraction_data.get('action', 'unknown'),
             item=extraction_data.get('item', 'not specified'),
             details=extraction_data.get('details', 'not provided'),
-            inventory_context="" # Initially empty, will be filled by tool output if called
-            inventory_context=inventory_context
+            inventory_context="" # This will be filled by tool output if called
         )
-        
-        # Initial parts for the model, including the tool definition
-        model_parts = [
-            genai.protos.Part(text=prompt),
-        ]
-        
-        # Add tools to the model call
-        tools_to_use = [inventory_tool_schema]
 
-        # First call to the model, potentially triggering a tool call
-        # Run synchronous AI call in a separate thread
+        # Agentic Loop: 1. Generate content with tools
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model=GEMINI_MODEL, contents=model_parts, tools=tools_to_use
-            model=GEMINI_MODEL, contents=prompt
+            model=GEMINI_MODEL, 
+            contents=prompt,
+            config={"tools": [INVENTORY_TOOL]}
         )
-        await _record_usage(response, tenant_id, channel_id, "generate_response_initial", client_config, interaction_id)
-
-        # Check if the model wants to call a tool
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if part.function_call:
-                    logger.info(f"Model requested tool call: {part.function_call.function.name}")
-                    tool_output_str, raw_items = await _execute_inventory_tool(
-                        part.function_call, tenant_id, channel_id, client_config, interaction_id
-                    )
-                    
-                    # Add the tool output to the conversation history and call the model again
-                    model_parts.append(part) # Add the function call part
-                    model_parts.append(genai.protos.Part(
-                        function_response=genai.protos.FunctionResponse(
-                            name=part.function_call.function.name,
-                            response={"result": tool_output_str}
-                        )
-                    ))
-                    
-                    # Second call to the model with tool output
-                    final_response = await asyncio.to_thread(
-                        client.models.generate_content,
-                        model=GEMINI_MODEL, contents=model_parts, tools=tools_to_use
-                    )
-                    await _record_usage(final_response, tenant_id, channel_id, "generate_response_tool_followup", client_config, interaction_id)
-                    return _response_text(final_response), raw_items
         
-        # If no tool call, or if the tool call didn't return items, just return the initial response
-        return _response_text(response), []
+        # 2. Check for tool calls
+        items_found = []
+        if response.candidates[0].content.parts[0].function_call:
+            fc = response.candidates[0].content.parts[0].function_call
+            args = fc.args
+            
+            # Execute actual search based on config
+            inv_source = config.get("inventory_source", "manual")
+            if inv_source == "shopify":
+                items_found = await fetch_clothing_inventory(
+                    shop_url=clean_shopify_url(config.get("shopify_url")),
+                    access_token=config.get("shopify_access_token"),
+                    query=args.get("query"), category=args.get("category"), max_price=args.get("max_price")
+                )
+                context = format_products_for_ai(items_found)
+            else:
+                items_found = await search_tenant_inventory(
+                    tenant_id, category=args.get("category"), colors=args.get("colors"), query=args.get("query")
+                )
+                context = format_manual_inventory_for_ai(items_found)
+
+            # 3. Final response with tool results
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=GEMINI_MODEL,
+                contents=[prompt, response.candidates[0].content, {"function_response": {"name": fc.name, "response": {"result": context}}}]
+            )
+
         await _record_usage(response, tenant_id, channel_id, "generate_response", client_config, interaction_id)
-        return _response_text(response)
+        
+        # Parse the AI's JSON decision
+        ai_decision = json.loads(_strip_code_fences(_response_text(response)))
+        return ai_decision, items_found[:3]
+
     except Exception:
         logger.exception("Gemini response generation error for tenant_id=%s", tenant_id)
-        return "I understood your request. A team member will follow up shortly.", []
-        return "I understood your request. A team member will follow up shortly."
+        return {"action": "general_response", "text": "I understood your request. A team member will follow up shortly."}, []
 
 # -------------------- GEMINI AI FALLBACK FOR UNKNOWN -------------------- 
 async def ai_fallback_response(
@@ -309,19 +263,6 @@ async def ai_fallback_response(
     try:
         prompt = safe_formatter.format(template, 
             persona=persona,
-            message=message
-        )
-
-        # Run synchronous AI call in a separate thread
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=GEMINI_MODEL, contents=prompt
-        )
-        await _record_usage(response, tenant_id, channel_id, "fallback_response", client_config, interaction_id)
-        return _response_text(response)
-    except Exception:
-        logger.exception("Gemini fallback error for tenant_id=%s", tenant_id)
-        return "I'm not sure how to help with that. Could you rephrase or ask about our services?"
             message=message
         )
 
