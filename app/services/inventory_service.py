@@ -11,7 +11,13 @@ async def get_inventory_metadata(tenant_id: str) -> Dict[str, Any]:
     """Fetches mapping dictionaries for colors and sizes."""
     db = get_db()
     metadata = await db.inventory_metadata.find_one({"tenant_id": tenant_id})
-    return metadata or {"color_map": {}, "size_groups": {}, "category_size_map": {}}
+    return metadata or {
+        "color_map": {}, 
+        "size_groups": {}, 
+        "category_size_map": {},
+        "categories": {},
+        "types": {}
+    }
 
 def _hydrate_item_attributes(item: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Converts stored short keys/integers back to human-readable strings."""

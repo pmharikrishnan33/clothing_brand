@@ -8,7 +8,7 @@ from google import genai
 from app.core.config import GEMINI_CLIENT as client, GEMINI_API_KEY
 
 from app.services.pricing_service import extract_token_usage, record_ai_model_usage
-from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai
+from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai, get_inventory_metadata
 from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai, clean_shopify_url
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
@@ -188,6 +188,20 @@ async def generate_ai_response(
     template = config.get("full_response_prompt") or DEFAULT_RESPONSE_PROMPT
     
     try:
+        # Fetch dynamic metadata for the tenant to guide the AI
+        inventory_guidance = ""
+        if tenant_id:
+            metadata = await get_inventory_metadata(tenant_id)
+            valid_categories = list(metadata.get("categories", {}).keys())
+            valid_types = list(metadata.get("types", {}).keys())
+            
+            if valid_categories:
+                inventory_guidance += f"Supported product categories: {', '.join(valid_categories)}\n"
+            if valid_types:
+                inventory_guidance += f"Supported styles/types: {', '.join(valid_types)}\n"
+            if inventory_guidance:
+                inventory_guidance = f"\nAVAILABLE OFFERINGS GUIDANCE:\n{inventory_guidance}"
+
         # Inject all dynamic variables into the template from DB
         prompt = safe_formatter.format(template, 
             persona=persona,
@@ -195,7 +209,7 @@ async def generate_ai_response(
             action=extraction_data.get('action', 'unknown'),
             item=extraction_data.get('item', 'not specified'),
             details=extraction_data.get('details', 'not provided'),
-            inventory_context="" # This will be filled by tool output if called
+            inventory_context=inventory_guidance
         )
 
         # Agentic Loop: 1. Generate content with tools

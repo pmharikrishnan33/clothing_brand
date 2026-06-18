@@ -6,33 +6,6 @@ from app.core.config import http_client, clean_shopify_url
 
 logger = logging.getLogger(__name__)
 
-# --- RULE ENGINE DICTIONARIES ---
-COLORS = ["black", "white", "blue", "red", "green", "yellow", "pink", "grey", "gray", "brown"]
-
-CATEGORIES = {
-    "shirt": ["shirt", "shirts"],
-    "tshirt": ["tshirt", "t-shirt", "tee", "tshirts"],
-    "jeans": ["jeans", "denim"],
-    "trouser": ["trouser", "pants", "chino", "pant", "trousers"],
-    "skirt": ["skirt", "skirts"],
-    "shorts": ["shorts", "cargo shorts", "bermudas"],
-    "dress": ["dress", "gown", "frock", "dresses"],
-    "suit": ["suit", "tuxedo", "blazer", "suits"],
-    "jacket": ["jacket", "coat", "hoodie", "sweater", "outerwear"],
-    "activewear": ["tracksuit", "leggings", "joggers", "gymwear"],
-    "innerwear": ["underwear", "briefs", "boxers", "bra", "panties"],
-    "clothing": ["clothing", "wear", "apparel", "garment"]
-}
-
-TYPES = {
-    "formal": ["formal", "office", "business", "corporate"],
-    "casual": ["casual", "daily", "everyday", "relaxed"],
-    "party": ["party", "wedding", "festive", "eveningwear"],
-    "sports": ["sports", "gym", "athletic", "workout"],
-    "loungewear": ["lounge", "sleepwear", "pajamas", "nightwear"]
-}
-
-
 async def fetch_shopify_products(
     shop_url: Optional[str] = None,
     access_token: Optional[str] = None,
@@ -103,21 +76,26 @@ async def fetch_shopify_products(
             logger.exception(f"Unexpected error fetching products from Shopify: {str(e)}")
     return []
 
-def extract_rules_info(message: str) -> Dict[str, Any]:
+def extract_rules_info(message: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Extracts structured data using regex and keyword dictionaries (No AI)."""
     msg = message.lower()
+    metadata = metadata or {}
     
-    detected_colors = [c for c in COLORS if c in msg]
+    colors_list = list(metadata.get("color_map", {}).keys())
+    categories_map = metadata.get("categories", {})
+    types_map = metadata.get("types", {})
+
+    detected_colors = [c for c in colors_list if c.lower() in msg]
     
     detected_category = None
-    for cat, keywords in CATEGORIES.items():
-        if any(kw in msg for kw in keywords):
+    for cat, keywords in categories_map.items():
+        if any(str(kw).lower() in msg for kw in keywords):
             detected_category = cat
             break
             
     detected_type = None
-    for t, keywords in TYPES.items():
-        if any(kw in msg for kw in keywords):
+    for t, keywords in types_map.items():
+        if any(str(kw).lower() in msg for kw in keywords):
             detected_type = t
             break
             
