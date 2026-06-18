@@ -11,7 +11,7 @@ from app.services.pricing_service import extract_token_usage, record_ai_model_us
 from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai, get_inventory_metadata
 from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai, clean_shopify_url
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "Gemini 3.1 Flash Lite")
 
 # --- DEFAULT PROMPT TEMPLATES ---
 class SafeFormatter(string.Formatter):
