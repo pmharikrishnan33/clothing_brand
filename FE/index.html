@@ -358,7 +358,7 @@
 
                 async loadUsage() {
                     if (!this.selectedTenant) return;
-                    const res = await fetch(`${this.apiBase}/api/usage/summary?tenant_id=${this.selectedTenant}`);
+                    const res = await fetch(`${this.apiBase}/api/admin/usage/${this.selectedTenant}`);
                     this.usageData = await res.json();
                 }
             }

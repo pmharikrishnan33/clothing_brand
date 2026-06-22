@@ -1,4 +1,5 @@
 import os
+import asyncio
 from functools import lru_cache
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -9,12 +10,17 @@ def get_mongo_client() -> AsyncIOMotorClient:
     if not MONGO_URI:
         raise RuntimeError("MONGO_URI is not configured in environment variables.")
     # serverSelectionTimeoutMS=5000 ensures we don't hang for 30s if the DB is down
-    return AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    return AsyncIOMotorClient(
+        MONGO_URI,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=5000,
+    )
 
 async def init_db():
-    client = get_mongo_client()
     try:
-        await client.admin.command('ping')
+        client = get_mongo_client()
+        await asyncio.wait_for(client.admin.command('ping'), timeout=6)
         print(f"✅ MongoDB connected successfully to database: {MONGO_DB_NAME}")
     except Exception as e:
         print(f"❌ Failed to connect to MongoDB: {e}")

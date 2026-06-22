@@ -4,7 +4,6 @@ import logging
 import os
 import string
 from typing import Any, Dict, List, Optional, Tuple
-from google import genai
 from app.core.config import GEMINI_CLIENT as client, GEMINI_API_KEY
 
 from app.services.pricing_service import extract_token_usage, record_ai_model_usage
@@ -222,8 +221,16 @@ async def generate_ai_response(
         
         # 2. Check for tool calls
         items_found = []
-        if response.candidates[0].content.parts[0].function_call:
-            fc = response.candidates[0].content.parts[0].function_call
+        first_part = None
+        if getattr(response, "candidates", None):
+            content = getattr(response.candidates[0], "content", None)
+            parts = getattr(content, "parts", None) if content else None
+            if parts:
+                first_part = parts[0]
+
+        function_call = getattr(first_part, "function_call", None)
+        if function_call:
+            fc = function_call
             args = fc.args
             
             # Execute actual search based on config
@@ -237,7 +244,11 @@ async def generate_ai_response(
                 context = format_products_for_ai(items_found)
             else:
                 items_found = await search_tenant_inventory(
-                    tenant_id, category=args.get("category"), colors=args.get("colors"), query=args.get("query")
+                    tenant_id,
+                    category=args.get("category"),
+                    colors=args.get("colors"),
+                    query=args.get("query"),
+                    max_price=args.get("max_price"),
                 )
                 context = format_manual_inventory_for_ai(items_found)
 

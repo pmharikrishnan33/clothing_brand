@@ -2,7 +2,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from app.core.database import get_db
-from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +57,8 @@ def _prepare_item(tenant_id: str, item_data: Dict[str, Any]) -> Dict[str, Any]:
         "media": item_data.get("media", []),          # List of URLs
         "category": item_data.get("category"),
         "type": item_data.get("type"),
+        "color": item_data.get("color", []),
+        "size": item_data.get("size", []),
         "color_ids": item_data.get("color_ids", []), # Store optimized IDs
         "size_ids": item_data.get("size_ids", []),   # Store optimized IDs
         "price": item_data.get("price"),             # New: Baseline catalog price
@@ -113,6 +114,7 @@ async def search_tenant_inventory(
     item_type: Optional[str] = None,
     colors: Optional[List[str]] = None, 
     query: Optional[str] = None, 
+    max_price: Optional[float] = None,
     limit: int = 5
 ) -> List[Dict[str, Any]]:
     """Searches the client-specific collection based on rules."""
@@ -139,6 +141,8 @@ async def search_tenant_inventory(
             {"title": {"$regex": query, "$options": "i"}},
             {"description": {"$regex": query, "$options": "i"}}
         ]
+    if max_price is not None:
+        filter_doc["price"] = {"$lte": max_price}
 
     cursor = collection.find(filter_doc).sort("created_at", -1).limit(limit)
     items = await cursor.to_list(length=limit)
@@ -170,7 +174,10 @@ def format_single_item_for_whatsapp(item: Dict[str, Any]) -> str:
     if item.get('color'):
         info += f"🎨 Colors: {', '.join(item.get('color', []))}\n"
     if item.get('price') is not None:
-        info += f"💰 Price: ₹{item.get('price'):.2f}\n"
+        try:
+            info += f"💰 Price: ₹{float(item.get('price')):.2f}\n"
+        except (TypeError, ValueError):
+            info += f"💰 Price: ₹{item.get('price')}\n"
     if item.get('stock') is not None:
         info += f"📦 Stock: {item.get('stock')} available\n"
     if item.get('size'):

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Query
 
@@ -19,18 +19,18 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     return parsed
 
 
-def _serialize_document(document):
+def _serialize_document(document: Dict[str, Any]) -> Dict[str, Any]:
     document["_id"] = str(document["_id"])
     return document
 
 
 @router.get("/{tenant_id}/summary")
-def get_usage_summary(
+async def get_usage_summary(
     tenant_id: str,
     start_at: Optional[str] = Query(None, description="ISO datetime, inclusive"),
     end_at: Optional[str] = Query(None, description="ISO datetime, inclusive"),
 ):
-    return usage_summary(
+    return await usage_summary(
         tenant_id=tenant_id,
         start_at=_parse_datetime(start_at),
         end_at=_parse_datetime(end_at),
@@ -38,7 +38,7 @@ def get_usage_summary(
 
 
 @router.get("/{tenant_id}/ai")
-def get_ai_usage(
+async def get_ai_usage(
     tenant_id: str,
     limit: int = Query(100, ge=1, le=500),
 ):
@@ -48,11 +48,12 @@ def get_ai_usage(
         .sort("created_at", -1)
         .limit(limit)
     )
-    return {"tenant_id": tenant_id, "items": [_serialize_document(item) for item in cursor]}
+    items = await cursor.to_list(length=limit)
+    return {"tenant_id": tenant_id, "items": [_serialize_document(item) for item in items]}
 
 
 @router.get("/{tenant_id}/meta")
-def get_meta_conversation_usage(
+async def get_meta_conversation_usage(
     tenant_id: str,
     limit: int = Query(100, ge=1, le=500),
 ):
@@ -62,4 +63,5 @@ def get_meta_conversation_usage(
         .sort("created_at", -1)
         .limit(limit)
     )
-    return {"tenant_id": tenant_id, "items": [_serialize_document(item) for item in cursor]}
+    items = await cursor.to_list(length=limit)
+    return {"tenant_id": tenant_id, "items": [_serialize_document(item) for item in items]}

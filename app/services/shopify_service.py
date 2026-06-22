@@ -37,7 +37,7 @@ async def fetch_shopify_products(
     try:
         if int(version.split("-")[0]) > datetime.now().year + 1:
             version = current_version
-    except:
+    except (IndexError, ValueError):
         version = current_version
 
     if not store_url or not token:
@@ -64,7 +64,11 @@ async def fetch_shopify_products(
             filtered = []
             for p in products:
                 variants = p.get("variants", [])
-                if variants and float(variants[0].get("price", 0)) <= max_price:
+                try:
+                    price = float(variants[0].get("price", 0)) if variants else 0
+                except (TypeError, ValueError):
+                    continue
+                if price <= max_price:
                     filtered.append(p)
             return filtered
             

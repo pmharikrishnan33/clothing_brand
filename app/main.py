@@ -2,10 +2,11 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from pathlib import Path
 from bson import ObjectId
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header
@@ -26,11 +27,8 @@ from app.services.shopify_service import fetch_clothing_inventory, format_produc
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Trigger database connection on startup to show the connection status in terminal
-    try:
+    if os.getenv("CHECK_DB_ON_STARTUP", "").lower() in {"1", "true", "yes"}:
         await init_db()
-    except Exception as e:
-        print(f"🔥 Database initialization failed: {e}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -48,6 +46,22 @@ app.include_router(usage_router)
 app.include_router(inventory_router)
 
 # --- ADMIN DASHBOARD API ---
+
+def serialize_mongo_document(document: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not document:
+        return document
+    if "_id" in document:
+        document["_id"] = str(document["_id"])
+    return document
+
+
+def parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 @app.get("/api/admin/clients")
 async def list_clients():
@@ -83,7 +97,7 @@ async def delete_client(tenant_id: str):
 async def get_keywords(tenant_id: str):
     db = get_db()
     doc = await db.keywords.find_one({"tenant_id": tenant_id})
-    return doc or {"tenant_id": tenant_id, "rules": []}
+    return serialize_mongo_document(doc) or {"tenant_id": tenant_id, "rules": []}
 
 @app.post("/api/admin/keywords/{tenant_id}")
 async def update_keywords(tenant_id: str, data: dict):
@@ -96,7 +110,7 @@ async def update_keywords(tenant_id: str, data: dict):
 async def get_learned(tenant_id: str):
     db = get_db()
     doc = await db.learned_keywords.find_one({"tenant_id": tenant_id})
-    return doc or {"tenant_id": tenant_id, "learned": []}
+    return serialize_mongo_document(doc) or {"tenant_id": tenant_id, "learned": []}
 
 @app.post("/api/admin/learned/{tenant_id}")
 async def update_learned(tenant_id: str, data: dict):
@@ -108,14 +122,15 @@ async def update_learned(tenant_id: str, data: dict):
 @app.get("/api/admin/usage/{tenant_id}")
 async def get_tenant_usage(tenant_id: str, start: Optional[str] = None, end: Optional[str] = None):
     """Provides AI and Meta usage summary for the dashboard."""
-    start_dt = datetime.fromisoformat(start) if start else None
-    end_dt = datetime.fromisoformat(end) if end else None
+    start_dt = parse_iso_datetime(start)
+    end_dt = parse_iso_datetime(end)
     return await usage_summary(tenant_id, start_dt, end_dt)
 
 @app.get("/api/admin/metadata/{tenant_id}")
 async def get_metadata(tenant_id: str):
     """Fetches inventory metadata (colors/sizes mappings) for the admin panel."""
-    return await get_inventory_metadata(tenant_id)
+    metadata = await get_inventory_metadata(tenant_id)
+    return serialize_mongo_document(metadata)
 
 @app.post("/api/admin/metadata/{tenant_id}")
 async def post_metadata(tenant_id: str, data: dict):
@@ -167,7 +182,7 @@ async def update_inventory_item(tenant_id: str, item_id: str, item_data: dict):
             {"$set": item_data}
         )
         return {"status": "updated"}
-    except:
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid Item ID")
 
 @app.delete("/api/admin/inventory/{tenant_id}/{item_id}")
@@ -176,7 +191,7 @@ async def delete_inventory_item(tenant_id: str, item_id: str):
     try:
         await db[f"inventory.{tenant_id}"].delete_one({"_id": ObjectId(item_id)})
         return {"status": "deleted"}
-    except:
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid Item ID")
 
 # --- MOUNT DASHBOARD FROM ROOT FE FOLDER ---
