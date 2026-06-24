@@ -271,7 +271,16 @@ async def generate_ai_response(
         await _record_usage(response, tenant_id, channel_id, "generate_response", client_config, interaction_id)
         
         # Parse the AI's JSON decision
-        ai_decision = json.loads(_strip_code_fences(_response_text(response)))
+        raw_text = _strip_code_fences(_response_text(response))
+        try:
+            ai_decision = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.warning("Gemini returned plain text instead of JSON: %s", raw_text)
+            ai_decision = {
+                "action": "general_response",
+                "text": raw_text if raw_text else "Hello! How can I help you today?"
+            }
+
         return ai_decision, items_found[:3]
 
     except Exception:
