@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zyphor Super Admin</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --sidebar: #0f172a; --bg: #f1f5f9; --primary: #4f46e5; --text: #334155; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { margin: 0; background: var(--bg); display: flex; color: var(--text); }
+        
+        .sidebar { width: 250px; background: var(--sidebar); min-height: 100vh; color: white; padding: 20px 0; }
+        .brand { font-size: 20px; font-weight: bold; padding: 0 20px 20px; border-bottom: 1px solid #1e293b; margin-bottom: 20px; }
+        .nav-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.2s; }
+        .nav-item:hover, .nav-item.active { background: rgba(255,255,255,0.1); border-left: 4px solid var(--primary); }
+        
+        .main { flex: 1; padding: 30px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 24px; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 14px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { color: #64748b; font-size: 12px; text-transform: uppercase; background: #f8fafc; }
+        
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .stat-box { text-align: center; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .stat-value { font-size: 28px; font-weight: bold; color: var(--primary); margin-top: 8px; }
+        
+        .btn { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; }
+        .btn-danger { background: #ef4444; }
+        select { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none; }
+    </style>
+</head>
+<body x-data="superAdmin()">
+
+    <div class="sidebar">
+        <div class="brand"><i class="fas fa-layer-group"></i> Super Admin</div>
+        <div @click="view = 'clients'; loadClients()" class="nav-item" :class="view === 'clients' && 'active'"><i class="fas fa-users"></i> Client Workspaces</div>
+        <div @click="view = 'usage'" class="nav-item" :class="view === 'usage' && 'active'"><i class="fas fa-chart-pie"></i> Financial / Usage</div>
+        <div @click="view = 'db'" class="nav-item" :class="view === 'db' && 'active'"><i class="fas fa-database"></i> DB Inspector</div>
+    </div>
+
+    <div class="main">
+        <div class="header">
+            <h1 x-text="view === 'clients' ? 'Client Management' : (view === 'usage' ? 'Usage Analytics' : 'Database Inspector')"></h1>
+            
+            <div x-show="view !== 'clients'">
+                <select x-model="selectedTenant" @change="refreshData()">
+                    <option value="">-- Select Tenant --</option>
+                    <template x-for="c in clients" :key="c.tenant_id">
+                        <option :value="c.tenant_id" x-text="c.tenant_id"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+
+        <template x-if="view === 'clients'">
+            <div class="card">
+                <table>
+                    <thead><tr><th>Tenant ID</th><th>Phone ID</th><th>Inventory Source</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody>
+                        <template x-for="c in clients" :key="c.tenant_id">
+                            <tr>
+                                <td style="font-weight: bold;" x-text="c.tenant_id"></td>
+                                <td x-text="c.phone_number_id"></td>
+                                <td><span style="background:#e0e7ff; color:#3730a3; padding:4px 8px; border-radius:4px; font-size:12px; text-transform:uppercase;" x-text="c.inventory_source"></span></td>
+                                <td><span :style="c.is_active ? 'color:#10b981' : 'color:#ef4444'" x-text="c.is_active ? 'Active' : 'Offline'"></span></td>
+                                <td><button @click="deleteClient(c.tenant_id)" class="btn btn-danger"><i class="fas fa-trash"></i></button></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </template>
+
+        <template x-if="view === 'usage'">
+            <div>
+                <div x-show="!selectedTenant" class="card" style="text-align: center; color: #64748b;">Please select a tenant from the top right to view analytics.</div>
+                
+                <div x-show="selectedTenant && usageData">
+                    <div class="grid-3" style="margin-bottom: 24px;">
+                        <div class="card stat-box">
+                            <div style="font-size: 13px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total Billed Cost</div>
+                            <div class="stat-value" x-text="usageData.currency + ' ' + usageData.total_combined_cost"></div>
+                        </div>
+                        <div class="card stat-box">
+                            <div style="font-size: 13px; color: #64748b; font-weight: bold; text-transform: uppercase;">Total AI Tokens</div>
+                            <div class="stat-value" style="color: #8b5cf6;" x-text="usageData.ai_model_usage?.by_model?.reduce((a,b) => a + b.total_tokens, 0) || 0"></div>
+                        </div>
+                        <div class="card stat-box">
+                            <div style="font-size: 13px; color: #64748b; font-weight: bold; text-transform: uppercase;">Billable Meta Convos</div>
+                            <div class="stat-value" style="color: #10b981;" x-text="usageData.meta_conversations?.by_category?.reduce((a,b) => a + b.billable_conversations, 0) || 0"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <h3><i class="fas fa-brain" style="color:#8b5cf6"></i> AI Operations</h3>
+                            <table>
+                                <thead><tr><th>Model</th><th>Requests</th><th>Cost</th></tr></thead>
+                                <tbody>
+                                    <template x-for="ai in usageData.ai_model_usage?.by_model || []">
+                                        <tr>
+                                            <td x-text="ai.model"></td>
+                                            <td x-text="ai.total_requests"></td>
+                                            <td style="font-weight:bold" x-text="ai.dynamic_total_cost.toFixed(4)"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card">
+                            <h3><i class="fab fa-whatsapp" style="color:#10b981"></i> WhatsApp Meta API</h3>
+                            <table>
+                                <thead><tr><th>Category</th><th>Total</th><th>Free</th><th>Billed</th></tr></thead>
+                                <tbody>
+                                    <template x-for="m in usageData.meta_conversations?.by_category || []">
+                                        <tr>
+                                            <td style="text-transform:capitalize;" x-text="m.category"></td>
+                                            <td x-text="m.total_conversations"></td>
+                                            <td style="color:#10b981" x-text="m.free_conversations"></td>
+                                            <td style="color:#ef4444; font-weight:bold" x-text="m.billable_conversations"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="view === 'db'">
+            <div class="card">
+                <div x-show="!selectedTenant" style="text-align: center; color: #64748b;">Please select a tenant to inspect DB contents.</div>
+                <div x-show="selectedTenant">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3>Master Catalog Overview: <span x-text="selectedTenant"></span></h3>
+                    </div>
+                    <table style="margin-top: 16px;">
+                        <thead><tr><th>ID</th><th>Title</th><th>Category</th><th>Price</th></tr></thead>
+                        <tbody>
+                            <template x-for="item in inventory" :key="item._id">
+                                <tr>
+                                    <td style="font-size:11px; color:#94a3b8; font-family:monospace" x-text="item._id"></td>
+                                    <td style="font-weight:600" x-text="item.title"></td>
+                                    <td x-text="item.category"></td>
+                                    <td x-text="'₹' + (item.price || 0)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+
+    </div>
+
+    <script>
+        function superAdmin() {
+            return {
+                view: 'clients',
+                selectedTenant: '',
+                clients: [],
+                usageData: null,
+                inventory: [],
+                apiBase: window.location.port === '5500' ? 'http://localhost:8000' : '',
+
+                async init() {
+                    await this.loadClients();
+                },
+
+                async loadClients() {
+                    const res = await fetch(`${this.apiBase}/api/admin/clients`);
+                    if (res.ok) this.clients = await res.json();
+                },
+
+                async refreshData() {
+                    if (!this.selectedTenant) return;
+                    if (this.view === 'usage') await this.loadUsage();
+                    if (this.view === 'db') await this.loadInventory();
+                },
+
+                async loadUsage() {
+                    const res = await fetch(`${this.apiBase}/api/admin/usage/${this.selectedTenant}`);
+                    if (res.ok) this.usageData = await res.json();
+                },
+
+                async loadInventory() {
+                    const res = await fetch(`${this.apiBase}/api/admin/inventory/${this.selectedTenant}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.inventory = data.items || [];
+                    }
+                },
+
+                async deleteClient(tenantId) {
+                    if(confirm(`WARNING: Deleting tenant ${tenantId}. Proceed?`)) {
+                        await fetch(`${this.apiBase}/api/admin/clients/${tenantId}`, { method: 'DELETE' });
+                        await this.loadClients();
+                        if(this.selectedTenant === tenantId) this.selectedTenant = '';
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

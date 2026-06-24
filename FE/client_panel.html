@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Portal | Inventory Management</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --primary: #3b82f6; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --border: #e2e8f0; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { margin: 0; background: var(--bg); color: var(--text); padding: 24px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 24px; border: 1px solid var(--border); }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        label { display: block; font-size: 13px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+        .btn { padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-danger { background: #ef4444; }
+        .btn-secondary { background: #94a3b8; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .checkbox-group { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+        .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 14px; background: #f1f5f9; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+        .checkbox-item input { margin: 0; width: auto; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+        th { color: #64748b; text-transform: uppercase; font-size: 12px; }
+    </style>
+</head>
+<body x-data="clientApp()">
+
+    <div class="container">
+        <div class="card" x-show="!isAuthenticated">
+            <h2>Client Login</h2>
+            <label>Enter your Tenant ID</label>
+            <input type="text" x-model="tenantId" placeholder="e.g. fashion_brand">
+            <button @click="login()" class="btn">Access Dashboard</button>
+        </div>
+
+        <div x-show="isAuthenticated" x-cloak>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h2><i class="fas fa-store"></i> Workspace: <span x-text="tenantId" style="color: var(--primary)"></span></h2>
+                <button @click="logout()" class="btn btn-danger">Logout</button>
+            </div>
+
+            <div class="card" id="productForm">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
+                    <h3 style="margin: 0;" x-text="newItem._id ? 'Edit Product' : 'Add New Product'"></h3>
+                    <button x-show="newItem._id" @click="resetForm()" class="btn btn-secondary btn-sm">Cancel Edit</button>
+                </div>
+                
+                <div class="grid-2">
+                    <div>
+                        <label>Product Title</label>
+                        <input type="text" x-model="newItem.title" placeholder="e.g. Classic Linen Shirt">
+                    </div>
+                    <div>
+                        <label>Media / Image URL</label>
+                        <input type="text" x-model="newItem.media[0]" placeholder="https://cdn.example.com/image.jpg">
+                    </div>
+                </div>
+
+                <label>Description</label>
+                <textarea rows="2" x-model="newItem.description" placeholder="Product details..."></textarea>
+
+                <div class="grid-3">
+                    <div>
+                        <label>Category</label>
+                        <select x-model="newItem.category" @change="updateAvailableSizes()">
+                            <option value="">Select Category...</option>
+                            <template x-for="cat in Object.keys(metadata.categories || {})" :key="cat">
+                                <option :value="cat" x-text="cat.charAt(0).toUpperCase() + cat.slice(1)"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Price (₹)</label>
+                        <input type="number" x-model.number="newItem.price" placeholder="999">
+                    </div>
+                    <div>
+                        <label>Stock / Inventory</label>
+                        <input type="number" x-model.number="newItem.stock" placeholder="50">
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div>
+                        <label>Age Group</label>
+                        <select x-model="newItem.age_group">
+                            <option value="adult">Adult</option>
+                            <option value="kids">Kids</option>
+                            <option value="teen">Teen</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Type / Style</label>
+                        <select x-model="newItem.type">
+                            <option value="">Select Style Context...</option>
+                            <template x-for="t in Object.keys(metadata.types || {})" :key="t">
+                                <option :value="t" x-text="t"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-top: 12px;">
+                    <label>Available Colors (From Metadata)</label>
+                    <div class="checkbox-group">
+                        <template x-for="color in Object.keys(metadata.color_map || {})" :key="color">
+                            <label class="checkbox-item">
+                                <input type="checkbox" :value="color" x-model="newItem.color">
+                                <span x-text="color"></span>
+                            </label>
+                        </template>
+                    </div>
+                </div>
+
+                <div style="margin-top: 12px;">
+                    <label>Available Sizes (Dynamic based on Category)</label>
+                    <div x-show="availableSizes.length === 0" style="font-size: 13px; color: #ef4444;">Select a category first to see sizes.</div>
+                    <div class="checkbox-group">
+                        <template x-for="size in availableSizes" :key="size">
+                            <label class="checkbox-item">
+                                <input type="checkbox" :value="size" x-model="newItem.size">
+                                <span x-text="size"></span>
+                            </label>
+                        </template>
+                    </div>
+                </div>
+
+                <button @click="submitProduct()" class="btn" style="width: 100%; margin-top: 12px;" :style="newItem._id ? 'background: #10b981' : ''">
+                    <i class="fas" :class="newItem._id ? 'fa-save' : 'fa-plus'"></i> 
+                    <span x-text="newItem._id ? 'Update Product' : 'Add to Catalog'"></span>
+                </button>
+            </div>
+
+            <div class="card">
+                <h3 style="margin-top: 0;">Current Inventory</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>Colors</th>
+                                <th>Sizes</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="item in inventory" :key="item._id">
+                                <tr>
+                                    <td style="font-weight: bold;" x-text="item.title"></td>
+                                    <td><span style="background:#e0f2fe; color:#0284c7; padding:4px 8px; border-radius:4px; font-size:12px;" x-text="item.category"></span></td>
+                                    <td x-text="item.color ? item.color.join(', ') : '-'"></td>
+                                    <td x-text="item.size ? item.size.join(', ') : '-'"></td>
+                                    <td x-text="'₹' + (item.price || 0)"></td>
+                                    <td x-text="item.stock || 0"></td>
+                                    <td style="text-align: right;">
+                                        <button @click="editItem(item)" class="btn btn-secondary btn-sm"><i class="fas fa-edit"></i></button>
+                                        <button @click="deleteItem(item._id)" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <tr x-show="inventory.length === 0">
+                                <td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">No products found in inventory.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function clientApp() {
+            return {
+                tenantId: '',
+                isAuthenticated: false,
+                apiBase: window.location.port === '5500' ? 'http://127.0.0.1:8000' : '',
+                metadata: { color_map: {}, categories: {}, types: {}, category_size_map: {}, size_groups: {} },
+                availableSizes: [],
+                inventory: [],
+                newItem: {
+                    title: '', description: '', media: [''], category: '', price: null, stock: null, type: '', age_group: 'adult', color: [], size: []
+                },
+
+                async login() {
+                    if (!this.tenantId) return alert("Enter Tenant ID");
+                    this.isAuthenticated = true;
+                    await this.fetchMetadata();
+                    await this.fetchInventory();
+                },
+
+                logout() {
+                    this.isAuthenticated = false;
+                    this.tenantId = '';
+                    this.resetForm();
+                },
+
+                async fetchMetadata() {
+                    try {
+                        const res = await fetch(`${this.apiBase}/api/admin/metadata/${this.tenantId}`);
+                        if (res.ok) {
+                            this.metadata = await res.json();
+                        }
+                    } catch (err) {
+                        console.error("Metadata fetch failed", err);
+                    }
+                },
+
+                updateAvailableSizes() {
+                    this.newItem.size = this.newItem.size || [];
+                    const cat = this.newItem.category;
+                    if (!cat) {
+                        this.availableSizes = [];
+                        return;
+                    }
+                    const sizeGroupName = this.metadata.category_size_map?.[cat]; 
+                    if (sizeGroupName && this.metadata.size_groups?.[sizeGroupName]) {
+                        this.availableSizes = Object.keys(this.metadata.size_groups[sizeGroupName]);
+                    } else {
+                        this.availableSizes = [];
+                    }
+                },
+
+                async submitProduct() {
+                    if (!this.newItem.title || !this.newItem.category || !this.newItem.price) {
+                        return alert("Title, Category, and Price are required.");
+                    }
+
+                    // Clone the payload to safely map IDs without affecting the UI
+                    const payload = JSON.parse(JSON.stringify(this.newItem));
+
+                    // MAP COLOR IDs
+                    if (payload.color && payload.color.length > 0) {
+                        payload.color_ids = payload.color.map(c => this.metadata.color_map[c]).filter(id => id !== undefined);
+                    } else {
+                        payload.color_ids = [];
+                    }
+
+                    // MAP SIZE IDs
+                    if (payload.size && payload.size.length > 0 && payload.category) {
+                        const sizeGroupName = this.metadata.category_size_map?.[payload.category];
+                        if (sizeGroupName && this.metadata.size_groups?.[sizeGroupName]) {
+                            const mapping = this.metadata.size_groups[sizeGroupName];
+                            payload.size_ids = payload.size.map(s => mapping[s]).filter(id => id !== undefined);
+                        }
+                    } else {
+                        payload.size_ids = [];
+                    }
+
+                    const isEdit = !!payload._id;
+                    const url = isEdit 
+                        ? `${this.apiBase}/api/admin/inventory/${this.tenantId}/${payload._id}`
+                        : `${this.apiBase}/inventory/${this.tenantId}/items`;
+                    const method = isEdit ? 'PATCH' : 'POST';
+
+                    // Remove DB specific fields from the payload before patching
+                    if (isEdit) {
+                        delete payload._id;
+                        delete payload.tenant_id;
+                        delete payload.created_at;
+                    }
+
+                    try {
+                        const res = await fetch(url, {
+                            method: method,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (res.ok) {
+                            alert(isEdit ? "Product Updated Successfully!" : "Product Added Successfully!");
+                            this.resetForm();
+                            await this.fetchInventory();
+                        } else {
+                            const errData = await res.json();
+                            alert(`Failed: ${errData.detail || 'Unknown error'}`);
+                        }
+                    } catch (e) {
+                        alert("Network error occurred.");
+                    }
+                },
+
+                editItem(item) {
+                    this.newItem = JSON.parse(JSON.stringify(item));
+                    if (!this.newItem.media || this.newItem.media.length === 0) this.newItem.media = [''];
+                    if (!this.newItem.color) this.newItem.color = [];
+                    if (!this.newItem.size) this.newItem.size = [];
+                    
+                    this.updateAvailableSizes();
+                    document.getElementById('productForm').scrollIntoView({ behavior: 'smooth' });
+                },
+
+                async deleteItem(itemId) {
+                    if (!confirm("Are you sure you want to delete this product?")) return;
+                    
+                    try {
+                        const res = await fetch(`${this.apiBase}/api/admin/inventory/${this.tenantId}/${itemId}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        if (res.ok) {
+                            await this.fetchInventory();
+                        } else {
+                            alert("Failed to delete product.");
+                        }
+                    } catch (e) {
+                        alert("Network error occurred.");
+                    }
+                },
+
+                resetForm() {
+                    this.newItem = { title: '', description: '', media: [''], category: '', price: null, stock: null, type: '', age_group: 'adult', color: [], size: [] };
+                    this.availableSizes = [];
+                },
+
+                async fetchInventory() {
+                    try {
+                        const res = await fetch(`${this.apiBase}/api/admin/inventory/${this.tenantId}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.inventory = data.items || [];
+                        }
+                    } catch (err) {
+                        console.error("Inventory fetch failed", err);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
