@@ -10,7 +10,16 @@ from app.services.pricing_service import extract_token_usage, record_ai_model_us
 from app.services.inventory_service import search_tenant_inventory, format_manual_inventory_for_ai, get_inventory_metadata
 from app.services.shopify_service import fetch_clothing_inventory, format_products_for_ai, clean_shopify_url
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "Gemini 3.1 Flash Lite")
+DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
+
+def normalize_gemini_model_name(model_name: str) -> str:
+    if not model_name:
+        return DEFAULT_GEMINI_MODEL
+
+    normalized = model_name.strip().lower().replace("_", "-").replace(" ", "-")
+    return normalized
+
+GEMINI_MODEL = normalize_gemini_model_name(os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL))
 
 # --- DEFAULT PROMPT TEMPLATES ---
 class SafeFormatter(string.Formatter):
